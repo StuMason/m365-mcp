@@ -35,7 +35,7 @@ describe('executeCalendar', () => {
             organizer: { emailAddress: { name: 'Alice' } },
             attendees: [{ emailAddress: { name: 'Bob' } }, { emailAddress: { name: 'Charlie' } }],
             isAllDay: false,
-            bodyPreview: 'Daily standup meeting',
+            body: { contentType: 'text', content: 'Daily standup meeting' },
           },
         ],
       },
@@ -212,5 +212,68 @@ describe('executeCalendar', () => {
     // Two events separated by double newline
     const parts = result.split('\n\n');
     expect(parts.length).toBe(2);
+  });
+
+  it('strips HTML from event body', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            subject: 'HTML Body Meeting',
+            isAllDay: false,
+            start: { dateTime: '2025-01-15T09:00:00' },
+            end: { dateTime: '2025-01-15T10:00:00' },
+            body: {
+              contentType: 'html',
+              content:
+                '<html><body><p>Join the meeting here</p><p>Agenda items below</p></body></html>',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeCalendar('test-token', { date: '2025-01-15' });
+
+    expect(result).toContain('Join the meeting here');
+    expect(result).toContain('Agenda items below');
+    expect(result).not.toContain('<p>');
+    expect(result).not.toContain('<html>');
+  });
+
+  it('truncates long event bodies to 500 chars', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            subject: 'Long Body',
+            isAllDay: false,
+            start: { dateTime: '2025-01-15T09:00:00' },
+            end: { dateTime: '2025-01-15T10:00:00' },
+            body: { contentType: 'text', content: 'A'.repeat(800) },
+          },
+        ],
+      },
+    });
+
+    const result = await executeCalendar('test-token', { date: '2025-01-15' });
+
+    expect(result).not.toContain('A'.repeat(800));
+    expect(result).toContain('A'.repeat(500) + '...');
+  });
+
+  it('requests body field in $select', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeCalendar('test-token', { date: '2025-01-15' });
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).toContain('body');
+    expect(calledPath).not.toContain('bodyPreview');
   });
 });
