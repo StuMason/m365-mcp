@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { URL } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import type { TokenData, AuthConfig } from '../types/tokens.js';
 
@@ -12,6 +12,20 @@ const TOKEN_FILENAME = 'tokens.json';
 const EXPIRY_BUFFER_MS = 120_000; // 2 minutes
 const AUTH_TIMEOUT_MS = 300_000; // 5 minutes
 const DEFAULT_CALLBACK_PATH = '/callback';
+
+/**
+ * Generates a PKCE code verifier (43-128 char base64url random string).
+ */
+export function generateCodeVerifier(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * Derives a PKCE code challenge from a verifier using SHA-256.
+ */
+export function generateCodeChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -171,15 +185,20 @@ export async function exchangeCodeForTokens(
   config: AuthConfig,
   code: string,
   redirectUri: string,
+  codeVerifier?: string,
 ): Promise<TokenData> {
   const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
-  const body = new URLSearchParams({
+  const params: Record<string, string> = {
     grant_type: 'authorization_code',
     client_id: config.clientId,
     client_secret: config.clientSecret,
     code,
     redirect_uri: redirectUri,
-  });
+  };
+  if (codeVerifier) {
+    params['code_verifier'] = codeVerifier;
+  }
+  const body = new URLSearchParams(params);
 
   const response = await fetch(tokenUrl, {
     method: 'POST',
@@ -317,6 +336,8 @@ export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
   }
 
   const state = randomBytes(16).toString('hex');
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
 
   const authUrl = new URL(
     `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/authorize`,
@@ -326,6 +347,8 @@ export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('scope', SCOPES.join(' '));
   authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set('code_challenge', codeChallenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
 
   process.stderr.write('Opening browser for Microsoft 365 sign-in...\n');
   openBrowser(authUrl.toString());
@@ -333,7 +356,7 @@ export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
   const { promise } = waitForAuthCallback(port, state, AUTH_TIMEOUT_MS, callbackPath);
   const code = await promise;
 
-  const tokenData = await exchangeCodeForTokens(config, code, redirectUri);
+  const tokenData = await exchangeCodeForTokens(config, code, redirectUri, codeVerifier);
   saveTokens(tokenData);
   return tokenData;
 }
