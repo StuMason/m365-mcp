@@ -9,6 +9,7 @@ import { calendarToolDefinition, executeCalendar } from './lib/tools/calendar.js
 import { mailToolDefinition, executeMail } from './lib/tools/mail.js';
 import { chatToolDefinition, executeChat } from './lib/tools/chat.js';
 import { filesToolDefinition, executeFiles } from './lib/tools/files.js';
+import { transcriptsToolDefinition, executeTranscripts } from './lib/tools/transcripts.js';
 
 const server = new Server({ name: 'm365-mcp', version: '0.1.0' }, { capabilities: { tools: {} } });
 
@@ -19,6 +20,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     mailToolDefinition,
     chatToolDefinition,
     filesToolDefinition,
+    transcriptsToolDefinition,
   ],
 }));
 
@@ -68,6 +70,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             path?: string;
             search?: string;
             count?: number;
+          },
+        );
+        break;
+      case 'ms_transcripts':
+        result = await executeTranscripts(
+          token,
+          (request.params.arguments ?? {}) as {
+            date?: string;
+            start?: string;
+            end?: string;
+            transcript_id?: string;
           },
         );
         break;
