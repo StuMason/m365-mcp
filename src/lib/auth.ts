@@ -219,8 +219,13 @@ export function waitForAuthCallback(
   let httpServer!: Server;
 
   const promise = new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    const closeServer = (): void => {
       httpServer.close();
+      httpServer.closeAllConnections();
+    };
+
+    const timeout = setTimeout(() => {
+      closeServer();
       reject(new Error('Authentication timed out after 5 minutes. Please try again.'));
     }, timeoutMs);
 
@@ -244,7 +249,7 @@ export function waitForAuthCallback(
           `<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Sign-in failed</h1><p>${safeDesc}</p></body></html>`,
         );
         clearTimeout(timeout);
-        httpServer.close();
+        closeServer();
         reject(new Error(`Authentication failed: ${errorDesc}`));
         return;
       }
@@ -255,7 +260,7 @@ export function waitForAuthCallback(
           '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Error</h1><p>State mismatch — possible CSRF attack.</p></body></html>',
         );
         clearTimeout(timeout);
-        httpServer.close();
+        closeServer();
         reject(new Error('State mismatch in OAuth callback'));
         return;
       }
@@ -266,7 +271,7 @@ export function waitForAuthCallback(
           '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Error</h1><p>No authorization code received.</p></body></html>',
         );
         clearTimeout(timeout);
-        httpServer.close();
+        closeServer();
         reject(new Error('No authorization code in callback'));
         return;
       }
@@ -276,7 +281,7 @@ export function waitForAuthCallback(
         '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Signed in!</h1><p>You can close this tab.</p></body></html>',
       );
       clearTimeout(timeout);
-      httpServer.close();
+      closeServer();
       resolve(callbackCode);
     });
 
