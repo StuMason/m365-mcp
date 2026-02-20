@@ -6,11 +6,20 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 import { loadAuthConfig, getAccessToken } from './lib/auth.js';
 import { profileToolDefinition, executeProfile } from './lib/tools/profile.js';
 import { calendarToolDefinition, executeCalendar } from './lib/tools/calendar.js';
+import { mailToolDefinition, executeMail } from './lib/tools/mail.js';
+import { chatToolDefinition, executeChat } from './lib/tools/chat.js';
+import { filesToolDefinition, executeFiles } from './lib/tools/files.js';
 
 const server = new Server({ name: 'm365-mcp', version: '0.1.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [profileToolDefinition, calendarToolDefinition],
+  tools: [
+    profileToolDefinition,
+    calendarToolDefinition,
+    mailToolDefinition,
+    chatToolDefinition,
+    filesToolDefinition,
+  ],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -31,6 +40,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             date?: string;
             start?: string;
             end?: string;
+          },
+        );
+        break;
+      case 'ms_mail':
+        result = await executeMail(
+          token,
+          (request.params.arguments ?? {}) as {
+            search?: string;
+            count?: number;
+          },
+        );
+        break;
+      case 'ms_chat':
+        result = await executeChat(
+          token,
+          (request.params.arguments ?? {}) as {
+            chat_id?: string;
+            count?: number;
+          },
+        );
+        break;
+      case 'ms_files':
+        result = await executeFiles(
+          token,
+          (request.params.arguments ?? {}) as {
+            path?: string;
+            search?: string;
+            count?: number;
           },
         );
         break;
