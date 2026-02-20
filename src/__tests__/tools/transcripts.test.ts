@@ -254,13 +254,11 @@ describe('executeTranscripts', () => {
   // ── Drill-down mode ──────────────────────────────────────────────────
 
   describe('drill-down mode', () => {
-    it('returns full transcript for valid compound ID', async () => {
+    it('returns short transcript marked as complete', async () => {
       const vttContent = 'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world';
 
-      // VTT content fetch (raw fetch, v1.0 succeeds)
       mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
 
-      // Meeting subject fetch
       mockGraphFetch.mockResolvedValueOnce({
         ok: true,
         data: { subject: 'Team Standup' },
@@ -271,18 +269,100 @@ describe('executeTranscripts', () => {
       });
 
       expect(result).toContain('# Transcript: Team Standup');
+      expect(result).toContain('(complete)');
       expect(result).toContain(vttContent);
+      expect(result).not.toContain('To continue reading');
+    });
+
+    it('paginates long transcript with continuation instructions', async () => {
+      const vttContent = 'WEBVTT\n\n' + 'A'.repeat(15_000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Long Meeting' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting123/transcript456',
+      });
+
+      expect(result).toContain('# Transcript: Long Meeting');
+      expect(result).toContain(`Length: ${vttContent.length} chars`);
+      expect(result).toContain('Showing: 0–10000');
+      expect(result).toContain(`Remaining: ${vttContent.length - 10000}`);
+      expect(result).toContain('To continue reading');
+      expect(result).toContain('offset=10000');
+      // Should not contain the full content
+      expect(result).not.toContain('A'.repeat(15_000));
+    });
+
+    it('returns next chunk when offset is provided', async () => {
+      const vttContent = 'B'.repeat(5000) + 'C'.repeat(5000) + 'D'.repeat(5000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Offset Test' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+        offset: 10000,
+      });
+
+      expect(result).toContain('Showing: 10000–15000');
+      expect(result).toContain('Remaining: 0');
+      expect(result).not.toContain('To continue reading');
+      // Should contain only 'D' content
+      expect(result).toContain('D'.repeat(5000));
+    });
+
+    it('respects custom length parameter', async () => {
+      const vttContent = 'X'.repeat(30_000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Custom Length' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+        length: 20000,
+      });
+
+      expect(result).toContain('Showing: 0–20000');
+      expect(result).toContain('Remaining: 10000');
+    });
+
+    it('clamps length to max 50000', async () => {
+      const vttContent = 'Y'.repeat(80_000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Max Length' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+        length: 999999,
+      });
+
+      expect(result).toContain('Showing: 0–50000');
     });
 
     it('falls back to beta when v1.0 returns 403', async () => {
       const vttContent = 'WEBVTT\n\nFallback content';
 
-      // v1.0 returns 403
       mockFetch.mockResolvedValueOnce(mockResponse('Forbidden', 403));
-      // beta returns successfully
       mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
 
-      // Meeting subject
       mockGraphFetch.mockResolvedValueOnce({
         ok: true,
         data: { subject: 'Beta Meeting' },

@@ -1,9 +1,15 @@
 import { graphFetch } from '../graph.js';
 
+const DEFAULT_CHUNK_SIZE = 10_000;
+const MAX_CHUNK_SIZE = 50_000;
+
 export const transcriptsToolDefinition = {
   name: 'ms_transcripts',
   description:
-    'Fetch meeting transcripts from Microsoft Teams. Returns preview (~3000 chars) + transcript_id for drill-down. Use transcript_id to get the full transcript.',
+    'Fetch meeting transcripts from Microsoft Teams. ' +
+    'Without transcript_id: lists meetings with ~3000 char previews. ' +
+    'With transcript_id: returns transcript content in chunks (default 10,000 chars). ' +
+    'Use offset to paginate through long transcripts.',
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -12,7 +18,16 @@ export const transcriptsToolDefinition = {
       end: { type: 'string', description: 'End of date range (ISO 8601)' },
       transcript_id: {
         type: 'string',
-        description: 'Transcript ID for full content drill-down (from a previous list call)',
+        description: 'Transcript ID for content drill-down (from a previous list call)',
+      },
+      offset: {
+        type: 'integer',
+        description:
+          'Character offset for pagination (default 0). Use the value from the previous response to continue reading.',
+      },
+      length: {
+        type: 'integer',
+        description: 'Max characters to return (default 10000, max 50000)',
       },
     },
   },
@@ -225,9 +240,14 @@ async function fetchTranscriptsList(
 }
 
 /**
- * Handles drill-down mode: fetch full transcript by compound ID.
+ * Handles drill-down mode: fetch transcript by compound ID with pagination.
  */
-async function executeDrillDown(token: string, compoundId: string): Promise<string> {
+async function executeDrillDown(
+  token: string,
+  compoundId: string,
+  offset: number,
+  length: number,
+): Promise<string> {
   const parsed = parseTranscriptId(compoundId);
   if (!parsed) {
     return 'Error: Invalid transcript_id format. Expected "{meetingId}/{transcriptId}".';
@@ -250,7 +270,32 @@ async function executeDrillDown(token: string, compoundId: string): Promise<stri
     subject = meetingResult.data.subject;
   }
 
-  return `# Transcript: ${subject}\n\n${vtt}`;
+  const totalLength = vtt.length;
+
+  // Short transcript — return it all, no pagination needed
+  if (totalLength <= length) {
+    return `# Transcript: ${subject}\nLength: ${totalLength} chars (complete)\n\n${vtt}`;
+  }
+
+  // Paginated: slice the requested chunk
+  const chunk = vtt.slice(offset, offset + length);
+  const end = offset + chunk.length;
+  const remaining = totalLength - end;
+
+  const lines: string[] = [];
+  lines.push(`# Transcript: ${subject}`);
+  lines.push(`Length: ${totalLength} chars | Showing: ${offset}–${end} | Remaining: ${remaining}`);
+  lines.push('');
+  lines.push(chunk);
+
+  if (remaining > 0) {
+    lines.push('');
+    lines.push(
+      `--- To continue reading, call again with transcript_id="${compoundId}" offset=${end} ---`,
+    );
+  }
+
+  return lines.join('\n');
 }
 
 /**
@@ -379,14 +424,23 @@ async function executeList(
 
 /**
  * Fetches meeting transcripts from Microsoft Teams.
- * Supports two modes: list (date range) and drill-down (specific transcript).
+ * Supports two modes: list (date range) and drill-down (specific transcript with pagination).
  */
 export async function executeTranscripts(
   token: string,
-  args: { date?: string; start?: string; end?: string; transcript_id?: string },
+  args: {
+    date?: string;
+    start?: string;
+    end?: string;
+    transcript_id?: string;
+    offset?: number;
+    length?: number;
+  },
 ): Promise<string> {
   if (args.transcript_id) {
-    return executeDrillDown(token, args.transcript_id);
+    const offset = Math.max(args.offset ?? 0, 0);
+    const length = Math.min(Math.max(args.length ?? DEFAULT_CHUNK_SIZE, 1), MAX_CHUNK_SIZE);
+    return executeDrillDown(token, args.transcript_id, offset, length);
   }
   return executeList(token, args);
 }
