@@ -14,6 +14,8 @@ function mockFetch(response: Partial<Response>): jest.Mock<typeof fetch> {
   return mock;
 }
 
+const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
 describe('graphFetch', () => {
   it('returns ok with data on successful response', async () => {
     const mock = mockFetch({
@@ -30,7 +32,7 @@ describe('graphFetch', () => {
         headers: expect.objectContaining({
           Authorization: 'Bearer test-token',
           'Content-Type': 'application/json',
-          Prefer: 'outlook.timezone="Europe/London"',
+          Prefer: `outlook.timezone="${systemTimezone}"`,
         }),
       }),
     );
@@ -131,10 +133,39 @@ describe('graphFetch', () => {
       expect.any(String),
       expect.objectContaining({
         headers: expect.objectContaining({
-          Prefer: 'outlook.timezone="Europe/London"',
+          Prefer: `outlook.timezone="${systemTimezone}"`,
         }),
       }),
     );
+  });
+
+  it('uses MS365_MCP_TIMEZONE env var for timezone header', async () => {
+    const original = process.env['MS365_MCP_TIMEZONE'];
+    process.env['MS365_MCP_TIMEZONE'] = 'America/New_York';
+
+    try {
+      const mock = mockFetch({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Partial<Response>);
+
+      await graphFetch('/me', 'test-token');
+
+      expect(mock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Prefer: 'outlook.timezone="America/New_York"',
+          }),
+        }),
+      );
+    } finally {
+      if (original === undefined) {
+        delete process.env['MS365_MCP_TIMEZONE'];
+      } else {
+        process.env['MS365_MCP_TIMEZONE'] = original;
+      }
+    }
   });
 
   it('excludes timezone header when timezone is false', async () => {
