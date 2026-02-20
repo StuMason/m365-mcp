@@ -120,14 +120,14 @@ describe('executeChat', () => {
       ok: false,
       error: {
         status: 404,
-        message: 'Resource not found. Your account may not have an Exchange Online license.',
+        message: 'Resource not found. The item may not exist or you may lack access.',
       },
     });
 
     const result = await executeChat('test-token', { chat_id: 'nonexistent' });
 
     expect(result).toBe(
-      'Error: Resource not found. Your account may not have an Exchange Online license.',
+      'Error: Resource not found. The item may not exist or you may lack access.',
     );
   });
 

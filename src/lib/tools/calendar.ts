@@ -22,7 +22,7 @@ interface CalendarEvent {
   organizer?: { emailAddress?: { name?: string } };
   attendees?: Array<{ emailAddress?: { name?: string } }>;
   isAllDay?: boolean;
-  bodyPreview?: string;
+  body?: { contentType?: string; content?: string };
   onlineMeeting?: { joinUrl?: string } | null;
   webLink?: string;
 }
@@ -53,6 +53,29 @@ function todayRange(): { start: string; end: string } {
   const day = String(now.getDate()).padStart(2, '0');
   return dateRangeForDay(`${year}-${month}-${day}`)!;
 }
+
+/**
+ * Strips HTML tags and decodes common entities from event body content.
+ */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<style[^>]*>.*?<\/style>/gis, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const MAX_BODY_LENGTH = 500;
 
 /**
  * Formats a calendar event into readable multi-line text.
@@ -88,8 +111,14 @@ function formatEvent(event: CalendarEvent): string {
     }
   }
 
-  if (event.bodyPreview) {
-    lines.push(event.bodyPreview);
+  if (event.body?.content) {
+    const text =
+      event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
+    if (text) {
+      const truncated =
+        text.length > MAX_BODY_LENGTH ? text.slice(0, MAX_BODY_LENGTH) + '...' : text;
+      lines.push(truncated);
+    }
   }
 
   return lines.join('\n');
@@ -127,7 +156,7 @@ export async function executeCalendar(
     'location',
     'attendees',
     'isAllDay',
-    'bodyPreview',
+    'body',
     'organizer',
     'onlineMeeting',
     'webLink',

@@ -1,7 +1,7 @@
 {
   "name": "@masonator/m365-mcp",
   "scope": "@masonator",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP server implementation for Microsoft 365 via Microsoft Graph API",
   "type": "module",
   "main": "./dist/index.js",
