@@ -226,4 +226,125 @@ describe('executeMail', () => {
       timezone: false,
     });
   });
+
+  it('includes message ID in list results', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'AAMkAGI2',
+            subject: 'Test Email',
+            from: { emailAddress: { name: 'Alice', address: 'alice@example.com' } },
+            receivedDateTime: '2025-06-15T10:00:00Z',
+            bodyPreview: 'Preview text',
+            isRead: true,
+            importance: 'normal',
+          },
+        ],
+      },
+    });
+
+    const result = await executeMail('test-token', {});
+
+    expect(result).toContain('Message ID: AAMkAGI2');
+  });
+
+  it('includes id in $select for list mode', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeMail('test-token', {});
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).toContain('$select=id,');
+  });
+
+  describe('drill-down mode', () => {
+    it('fetches full email body by message_id', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          subject: 'Quarterly Report',
+          from: { emailAddress: { name: 'Alice', address: 'alice@example.com' } },
+          receivedDateTime: '2025-06-15T10:00:00Z',
+          body: { contentType: 'text', content: 'Full body content here.' },
+          isRead: true,
+          importance: 'high',
+          toRecipients: [{ emailAddress: { name: 'Bob', address: 'bob@example.com' } }],
+          ccRecipients: [{ emailAddress: { name: 'Carol', address: 'carol@example.com' } }],
+        },
+      });
+
+      const result = await executeMail('test-token', { message_id: 'AAMkAGI2' });
+
+      expect(result).toContain('# Quarterly Report');
+      expect(result).toContain('From: Alice <alice@example.com>');
+      expect(result).toContain('To: Bob <bob@example.com>');
+      expect(result).toContain('Cc: Carol <carol@example.com>');
+      expect(result).toContain('Full body content here.');
+      expect(mockGraphFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/me/messages/AAMkAGI2'),
+        'test-token',
+        { timezone: false },
+      );
+    });
+
+    it('strips HTML from email body', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          subject: 'HTML Email',
+          from: { emailAddress: { name: 'Alice', address: 'alice@example.com' } },
+          body: {
+            contentType: 'html',
+            content: '<html><body><p>Hello world</p><p>Second paragraph</p></body></html>',
+          },
+          isRead: true,
+          importance: 'normal',
+        },
+      });
+
+      const result = await executeMail('test-token', { message_id: 'msg-html' });
+
+      expect(result).toContain('Hello world');
+      expect(result).toContain('Second paragraph');
+      expect(result).not.toContain('<p>');
+      expect(result).not.toContain('<html>');
+    });
+
+    it('handles missing body gracefully', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          subject: 'Empty Email',
+          from: { emailAddress: { name: 'Alice', address: 'alice@example.com' } },
+          isRead: false,
+          importance: 'normal',
+        },
+      });
+
+      const result = await executeMail('test-token', { message_id: 'msg-empty' });
+
+      expect(result).toContain('# Empty Email');
+      expect(result).toContain('(no body)');
+    });
+
+    it('returns error when message not found', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: false,
+        error: {
+          status: 404,
+          message: 'Resource not found. Your account may not have an Exchange Online license.',
+        },
+      });
+
+      const result = await executeMail('test-token', { message_id: 'nonexistent' });
+
+      expect(result).toContain('Error:');
+      expect(result).toContain('not found');
+    });
+  });
 });

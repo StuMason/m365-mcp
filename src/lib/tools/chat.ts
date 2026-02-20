@@ -45,10 +45,24 @@ interface ChatsResponse {
 }
 
 /**
- * Strips HTML tags from a string.
+ * Converts Teams HTML message content to plain text.
+ * Handles <br>, <p>, <emoji alt="...">, <at>, <attachment>, and other tags.
  */
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').trim();
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<emoji[^>]*alt="([^"]*)"[^>]*\/?>/gi, '$1')
+    .replace(/<attachment[^>]*>.*?<\/attachment>/gis, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
@@ -74,7 +88,8 @@ function formatChatListing(chat: Chat): string {
   lines.push(`Type: ${chat.chatType || 'unknown'}`);
 
   if (chat.lastMessagePreview) {
-    const preview = chat.lastMessagePreview.body?.content || '(no preview)';
+    const rawPreview = chat.lastMessagePreview.body?.content || '(no preview)';
+    const preview = rawPreview === '(no preview)' ? rawPreview : stripHtml(rawPreview);
     const time = chat.lastMessagePreview.createdDateTime
       ? new Date(chat.lastMessagePreview.createdDateTime).toLocaleString()
       : '';
