@@ -42,19 +42,20 @@ On first use, the server opens your browser to sign in with Microsoft. After gra
 
 ## Environment Variables
 
-| Variable                  | Required | Description                                      |
-| ------------------------- | -------- | ------------------------------------------------ |
-| `MS365_MCP_CLIENT_ID`     | Yes      | Azure AD application (client) ID                 |
-| `MS365_MCP_CLIENT_SECRET` | Yes      | Azure AD client secret                           |
-| `MS365_MCP_TENANT_ID`     | Yes      | Azure AD tenant ID                               |
-| `MS365_MCP_TIMEZONE`      | No       | Timezone for calendar (default: system timezone) |
+| Variable                  | Required | Description                                                                    |
+| ------------------------- | -------- | ------------------------------------------------------------------------------ |
+| `MS365_MCP_CLIENT_ID`     | Yes      | Azure AD application (client) ID                                               |
+| `MS365_MCP_CLIENT_SECRET` | Yes      | Azure AD client secret                                                         |
+| `MS365_MCP_TENANT_ID`     | Yes      | Azure AD tenant ID                                                             |
+| `MS365_MCP_TIMEZONE`      | No       | Timezone for calendar (default: system timezone)                               |
+| `MS365_MCP_REDIRECT_URL`  | No       | OAuth redirect URI (default: dynamic port, `http://localhost:{port}/callback`) |
 
 ## Azure AD Setup
 
 Register an application in Azure AD with these settings:
 
 1. **App registration** > New registration
-2. **Redirect URI**: `http://localhost:19284/auth/callback` (Web platform)
+2. **Redirect URI**: `http://localhost` (Web platform) — or set a fixed URI via `MS365_MCP_REDIRECT_URL`
 3. **Certificates & secrets** > New client secret
 4. **API permissions** > Add the following **delegated** permissions:
    - `User.Read`
