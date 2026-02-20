@@ -7,6 +7,6 @@ export interface TokenData {
 
 export interface AuthConfig {
   clientId: string;
-  clientSecret: string;
+  clientSecret?: string;
   tenantId: string;
 }
