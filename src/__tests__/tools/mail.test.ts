@@ -47,7 +47,7 @@ describe('executeMail', () => {
     expect(result).toContain('Here are the meeting notes from today.');
   });
 
-  it('handles search param', async () => {
+  it('handles search param without $orderBy', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,
       data: { value: [] },
@@ -55,11 +55,22 @@ describe('executeMail', () => {
 
     await executeMail('test-token', { search: 'quarterly report' });
 
-    expect(mockGraphFetch).toHaveBeenCalledWith(
-      expect.stringContaining('$search="quarterly%20report"'),
-      'test-token',
-      { timezone: false },
-    );
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).toContain('$search="quarterly%20report"');
+    expect(calledPath).not.toContain('$orderby');
+  });
+
+  it('includes $orderBy when no search is provided', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeMail('test-token', {});
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).toContain('$orderby=receivedDateTime desc');
+    expect(calledPath).not.toContain('$search');
   });
 
   it('handles empty results', async () => {

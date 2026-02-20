@@ -11,6 +11,7 @@ import { mailToolDefinition, executeMail } from './lib/tools/mail.js';
 import { chatToolDefinition, executeChat } from './lib/tools/chat.js';
 import { filesToolDefinition, executeFiles } from './lib/tools/files.js';
 import { transcriptsToolDefinition, executeTranscripts } from './lib/tools/transcripts.js';
+import { serverInfoToolDefinition, executeServerInfo } from './lib/tools/server-info.js';
 
 // Validate env vars at startup
 try {
@@ -29,7 +30,7 @@ try {
   process.exit(1);
 }
 
-const server = new Server({ name: 'm365-mcp', version: '0.2.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'm365-mcp', version: '0.4.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -40,6 +41,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     chatToolDefinition,
     filesToolDefinition,
     transcriptsToolDefinition,
+    serverInfoToolDefinition,
   ],
 }));
 
@@ -49,9 +51,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const config = loadAuthConfig();
 
-    // auth_status handles its own auth
+    // Tools that don't require a valid token
     if (name === 'ms_auth_status') {
       const result = await executeAuthStatus(config);
+      return { content: [{ type: 'text', text: result }] };
+    }
+
+    if (name === 'ms_server_info') {
+      const result = executeServerInfo();
       return { content: [{ type: 'text', text: result }] };
     }
 
@@ -109,6 +116,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             start?: string;
             end?: string;
             transcript_id?: string;
+            offset?: number;
+            length?: number;
           },
         );
         break;
