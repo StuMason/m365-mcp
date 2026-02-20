@@ -475,10 +475,6 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'transcript-001' }] },
       });
 
-      // VTT content
-      const vttContent = 'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello from sprint';
-      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
       expect(result).toContain('Found 1 meetings, 1 with transcripts.');
@@ -486,43 +482,8 @@ describe('executeTranscripts', () => {
       expect(result).toContain('Date: 2025-06-15T10:00:00');
       expect(result).toContain('Attendees: Alice, Bob');
       expect(result).toContain(`Transcript ID: ${meetingId}/transcript-001`);
-      expect(result).toContain(vttContent);
-    });
-
-    it('truncates VTT preview to ~3000 chars', async () => {
-      const threadId = '19:meeting_long@thread.v2';
-      const oid = 'oid-long';
-      const joinUrl = makeJoinUrl(threadId, oid);
-
-      // Calendar view
-      mockGraphFetch.mockResolvedValueOnce({
-        ok: true,
-        data: {
-          value: [
-            {
-              subject: 'Long Meeting',
-              start: { dateTime: '2025-06-15T10:00:00' },
-              onlineMeeting: { joinUrl },
-            },
-          ],
-        },
-      });
-
-      // Transcripts list
-      mockGraphFetch.mockResolvedValueOnce({
-        ok: true,
-        data: { value: [{ id: 'tx-long' }] },
-      });
-
-      // Long VTT content
-      const longVtt = 'WEBVTT\n\n' + 'A'.repeat(4000);
-      mockFetch.mockResolvedValueOnce(mockResponse(longVtt));
-
-      const result = await executeTranscripts('test-token', { date: '2025-06-15' });
-
-      expect(result).toContain('... [truncated — use transcript_id for full content]');
-      // The preview should not contain the full 4000-char string
-      expect(result).not.toContain('A'.repeat(4000));
+      // List mode no longer fetches VTT previews — drill-down handles full content
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('handles empty calendar (no meetings)', async () => {
@@ -652,15 +613,13 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'tx-500' }] },
       });
 
-      // v1.0 VTT fetch returns 500 (non-retryable)
-      mockFetch.mockResolvedValueOnce(mockResponse('Internal Server Error', 500));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
-      // Meeting has transcripts but VTT download failed — still shows meeting without preview
+      // Meeting has transcripts — listed without VTT preview
       expect(result).toContain('1 with transcripts');
       expect(result).toContain('Server Error Meeting');
-      expect(mockFetch).toHaveBeenCalledTimes(1); // No beta retry for 500
+      // List mode no longer fetches VTT content
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('skips meeting when both v1.0 and beta transcript listing fail with non-retryable error', async () => {
@@ -731,9 +690,6 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'tx-beta' }] },
       });
 
-      // VTT content
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nBeta content'));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
       expect(result).toContain('1 with transcripts');
@@ -769,9 +725,6 @@ describe('executeTranscripts', () => {
         ok: true,
         data: { value: [{ id: 'tx-1' }] },
       });
-
-      // VTT content
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nOnline content'));
 
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
@@ -819,11 +772,6 @@ describe('executeTranscripts', () => {
         },
       });
 
-      // VTT content for week 1 (matched to first occurrence)
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nWeek 1 standup content'));
-      // VTT content for week 2 (matched to second occurrence)
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nWeek 2 standup content'));
-
       const result = await executeTranscripts('test-token', {
         start: '2025-06-14T00:00:00Z',
         end: '2025-06-23T00:00:00Z',
@@ -836,9 +784,8 @@ describe('executeTranscripts', () => {
       expect(result).toContain(`${meetingId}/tx-week1`);
       expect(result).toContain(`${meetingId}/tx-week2`);
 
-      // Each shows different VTT content
-      expect(result).toContain('Week 1 standup content');
-      expect(result).toContain('Week 2 standup content');
+      // List mode no longer fetches VTT content
+      expect(mockFetch).not.toHaveBeenCalled();
 
       // Transcript list fetched only once (not twice) — cached for recurring
       const transcriptCalls = mockGraphFetch.mock.calls.filter((call) =>
@@ -888,11 +835,6 @@ describe('executeTranscripts', () => {
         },
       });
 
-      // VTT for Jun 8
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nJun 8 content'));
-      // VTT for Jun 22
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nJun 22 content'));
-
       const result = await executeTranscripts('test-token', {
         start: '2025-06-01T00:00:00Z',
         end: '2025-06-30T00:00:00Z',
@@ -902,8 +844,8 @@ describe('executeTranscripts', () => {
       expect(result).toContain('Found 3 meetings, 2 with transcripts.');
       expect(result).toContain(`${meetingId}/tx-jun8`);
       expect(result).toContain(`${meetingId}/tx-jun22`);
-      expect(result).toContain('Jun 8 content');
-      expect(result).toContain('Jun 22 content');
+      // List mode no longer fetches VTT content
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });
