@@ -231,35 +231,45 @@ describe('loadAuthConfig', () => {
     });
   });
 
-  it('throws when all env vars are missing', () => {
+  it('throws when all required env vars are missing', () => {
     delete process.env['MS365_MCP_CLIENT_ID'];
     delete process.env['MS365_MCP_CLIENT_SECRET'];
     delete process.env['MS365_MCP_TENANT_ID'];
 
     expect(() => loadAuthConfig()).toThrow(
-      'Missing required environment variables: MS365_MCP_CLIENT_ID, MS365_MCP_CLIENT_SECRET, MS365_MCP_TENANT_ID',
+      'Missing required environment variables: MS365_MCP_CLIENT_ID, MS365_MCP_TENANT_ID',
     );
   });
 
   it('throws when only CLIENT_ID is missing', () => {
     delete process.env['MS365_MCP_CLIENT_ID'];
-    process.env['MS365_MCP_CLIENT_SECRET'] = 'secret';
     process.env['MS365_MCP_TENANT_ID'] = 'tenant';
 
     expect(() => loadAuthConfig()).toThrow('MS365_MCP_CLIENT_ID');
   });
 
-  it('throws when only CLIENT_SECRET is missing', () => {
+  it('does not require CLIENT_SECRET (public client support)', () => {
     process.env['MS365_MCP_CLIENT_ID'] = 'client';
     delete process.env['MS365_MCP_CLIENT_SECRET'];
     process.env['MS365_MCP_TENANT_ID'] = 'tenant';
 
-    expect(() => loadAuthConfig()).toThrow('MS365_MCP_CLIENT_SECRET');
+    const config = loadAuthConfig();
+    expect(config.clientId).toBe('client');
+    expect(config.clientSecret).toBeUndefined();
+    expect(config.tenantId).toBe('tenant');
+  });
+
+  it('includes CLIENT_SECRET when provided', () => {
+    process.env['MS365_MCP_CLIENT_ID'] = 'client';
+    process.env['MS365_MCP_CLIENT_SECRET'] = 'secret';
+    process.env['MS365_MCP_TENANT_ID'] = 'tenant';
+
+    const config = loadAuthConfig();
+    expect(config.clientSecret).toBe('secret');
   });
 
   it('throws when only TENANT_ID is missing', () => {
     process.env['MS365_MCP_CLIENT_ID'] = 'client';
-    process.env['MS365_MCP_CLIENT_SECRET'] = 'secret';
     delete process.env['MS365_MCP_TENANT_ID'];
 
     expect(() => loadAuthConfig()).toThrow('MS365_MCP_TENANT_ID');
