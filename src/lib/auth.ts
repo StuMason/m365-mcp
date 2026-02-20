@@ -201,9 +201,17 @@ export async function exchangeCodeForTokens(
   }
   const body = new URLSearchParams(params);
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+  if (redirectUri) {
+    const origin = new URL(redirectUri).origin;
+    headers['Origin'] = origin;
+  }
+
   const response = await fetch(tokenUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers,
     body: body.toString(),
   });
 
@@ -383,9 +391,17 @@ export async function refreshAccessToken(
   const body = new URLSearchParams(params);
 
   try {
+    const refreshHeaders: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    const redirectUrl = process.env['MS365_MCP_REDIRECT_URL'];
+    if (redirectUrl) {
+      refreshHeaders['Origin'] = new URL(redirectUrl).origin;
+    }
+
     const response = await fetch(tokenUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: refreshHeaders,
       body: body.toString(),
     });
 
