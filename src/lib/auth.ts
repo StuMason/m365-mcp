@@ -11,8 +11,7 @@ import type { TokenData, AuthConfig } from '../types/tokens.js';
 const TOKEN_FILENAME = 'tokens.json';
 const EXPIRY_BUFFER_MS = 120_000; // 2 minutes
 const AUTH_TIMEOUT_MS = 300_000; // 5 minutes
-const AUTH_PORT = 19284;
-const CALLBACK_PATH = '/auth/callback';
+const DEFAULT_CALLBACK_PATH = '/callback';
 
 function escapeHtml(text: string): string {
   return text
@@ -217,6 +216,7 @@ export function waitForAuthCallback(
   port: number,
   expectedState: string,
   timeoutMs: number = AUTH_TIMEOUT_MS,
+  callbackPath: string = DEFAULT_CALLBACK_PATH,
 ): { promise: Promise<string>; server: Server } {
   let httpServer!: Server;
 
@@ -232,7 +232,7 @@ export function waitForAuthCallback(
     }, timeoutMs);
 
     httpServer = createHttpServer((req, res) => {
-      if (!req.url?.startsWith(CALLBACK_PATH)) {
+      if (!req.url?.startsWith(callbackPath)) {
         res.writeHead(404);
         res.end('Not found');
         return;
@@ -299,8 +299,23 @@ export function waitForAuthCallback(
  * exchanges the authorization code for tokens, saves them, and returns the TokenData.
  */
 export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
-  const port = AUTH_PORT;
-  const redirectUri = `http://localhost:${port}${CALLBACK_PATH}`;
+  const redirectUrl = process.env['MS365_MCP_REDIRECT_URL'];
+
+  let port: number;
+  let callbackPath: string;
+  let redirectUri: string;
+
+  if (redirectUrl) {
+    const parsed = new URL(redirectUrl);
+    port = parseInt(parsed.port, 10) || 80;
+    callbackPath = parsed.pathname;
+    redirectUri = redirectUrl;
+  } else {
+    port = await findAvailablePort();
+    callbackPath = DEFAULT_CALLBACK_PATH;
+    redirectUri = `http://localhost:${port}${callbackPath}`;
+  }
+
   const state = randomBytes(16).toString('hex');
 
   const authUrl = new URL(
@@ -315,7 +330,7 @@ export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
   process.stderr.write('Opening browser for Microsoft 365 sign-in...\n');
   openBrowser(authUrl.toString());
 
-  const { promise } = waitForAuthCallback(port, state);
+  const { promise } = waitForAuthCallback(port, state, AUTH_TIMEOUT_MS, callbackPath);
   const code = await promise;
 
   const tokenData = await exchangeCodeForTokens(config, code, redirectUri);
