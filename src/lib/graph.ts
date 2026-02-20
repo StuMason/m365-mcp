@@ -29,7 +29,9 @@ export async function graphFetch<T>(
   };
 
   if (options?.timezone !== false) {
-    headers['Prefer'] = 'outlook.timezone="Europe/London"';
+    const tz =
+      process.env.MS365_MCP_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    headers['Prefer'] = `outlook.timezone="${tz}"`;
   }
 
   let response: Response;

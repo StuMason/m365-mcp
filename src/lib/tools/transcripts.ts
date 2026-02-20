@@ -89,8 +89,10 @@ export function parseTranscriptId(
 /**
  * Computes the start and end ISO strings for a given YYYY-MM-DD date.
  */
-function dateRangeForDay(dateStr: string): { start: string; end: string } {
+function dateRangeForDay(dateStr: string): { start: string; end: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
   const date = new Date(`${dateStr}T00:00:00.000Z`);
+  if (isNaN(date.getTime())) return null;
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + 1);
   return { start: date.toISOString(), end: next.toISOString() };
@@ -104,7 +106,7 @@ function todayRange(): { start: string; end: string } {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  return dateRangeForDay(`${year}-${month}-${day}`);
+  return dateRangeForDay(`${year}-${month}-${day}`)!;
 }
 
 /**
@@ -120,7 +122,7 @@ async function fetchVttContent(
   const bases = ['https://graph.microsoft.com/v1.0', 'https://graph.microsoft.com/beta'];
 
   for (const base of bases) {
-    const url = `${base}/me/onlineMeetings/${encodedMeetingId}/transcripts/${transcriptId}/content?$format=text/vtt`;
+    const url = `${base}/me/onlineMeetings/${encodedMeetingId}/transcripts/${encodeURIComponent(transcriptId)}/content?$format=text/vtt`;
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -204,6 +206,7 @@ async function executeList(
 
   if (args.date) {
     const range = dateRangeForDay(args.date);
+    if (!range) return 'Error: Invalid date format. Expected YYYY-MM-DD.';
     start = range.start;
     end = range.end;
   } else if (args.start && args.end) {

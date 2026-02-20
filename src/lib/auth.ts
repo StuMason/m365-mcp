@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, unlinkSync, chmodSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createServer } from 'node:net';
@@ -11,6 +11,15 @@ import type { TokenData, AuthConfig } from '../types/tokens.js';
 const TOKEN_FILENAME = 'tokens.json';
 const EXPIRY_BUFFER_MS = 120_000; // 2 minutes
 const AUTH_TIMEOUT_MS = 300_000; // 5 minutes
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
 
 export const SCOPES = [
   'openid',
@@ -60,8 +69,7 @@ export function loadTokens(configDir?: string): TokenData | null {
 export function saveTokens(tokens: TokenData, configDir?: string): void {
   const dir = configDir ?? getConfigDir();
   const filePath = join(dir, TOKEN_FILENAME);
-  writeFileSync(filePath, JSON.stringify(tokens, null, 2), 'utf-8');
-  chmodSync(filePath, 0o600);
+  writeFileSync(filePath, JSON.stringify(tokens, null, 2), { mode: 0o600, encoding: 'utf-8' });
 }
 
 /**
@@ -230,9 +238,10 @@ export function waitForAuthCallback(
 
       if (error) {
         const errorDesc = url.searchParams.get('error_description') || error;
+        const safeDesc = escapeHtml(errorDesc);
         res.writeHead(400, { 'Content-Type': 'text/html' });
         res.end(
-          `<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Sign-in failed</h1><p>${errorDesc}</p></body></html>`,
+          `<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Sign-in failed</h1><p>${safeDesc}</p></body></html>`,
         );
         clearTimeout(timeout);
         httpServer.close();
