@@ -70,5 +70,8 @@
   "lint-staged": {
     "*.{ts,js,json,md,yaml,yml}": "prettier --write",
     "*.ts": "eslint --fix"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0"
   }
 }
