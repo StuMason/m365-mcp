@@ -337,7 +337,7 @@ describe('executeMail', () => {
         ok: false,
         error: {
           status: 404,
-          message: 'Resource not found. Your account may not have an Exchange Online license.',
+          message: 'Resource not found. The item may not exist or you may lack access.',
         },
       });
 

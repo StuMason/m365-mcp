@@ -267,10 +267,7 @@ async function executeDrillDown(
   const meetingResult = await graphFetch<OnlineMeetingResponse>(subjectPath, token);
   if (meetingResult.ok && meetingResult.data.subject) {
     subject = meetingResult.data.subject;
-  } else if (
-    !meetingResult.ok &&
-    (meetingResult.error.status === 403 || meetingResult.error.status === 400)
-  ) {
+  } else if (!meetingResult.ok && [400, 403, 404].includes(meetingResult.error.status)) {
     const betaResult = await graphFetch<OnlineMeetingResponse>(subjectPath, token, { beta: true });
     if (betaResult.ok && betaResult.data.subject) {
       subject = betaResult.data.subject;

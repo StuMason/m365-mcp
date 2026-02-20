@@ -63,7 +63,7 @@ export async function graphFetch<T>(
       message = 'Insufficient permissions. Check granted scopes with ms_auth_status.';
       break;
     case 404:
-      message = 'Resource not found. Your account may not have an Exchange Online license.';
+      message = 'Resource not found. The item may not exist or you may lack access.';
       break;
     default: {
       const text = await response.text();
