@@ -54,7 +54,7 @@ On first use, the server opens your browser to sign in with Microsoft. After gra
 Register an application in Azure AD with these settings:
 
 1. **App registration** > New registration
-2. **Redirect URI**: `http://localhost` (Web platform) — the server uses a dynamic port
+2. **Redirect URI**: `http://localhost:19284/auth/callback` (Web platform)
 3. **Certificates & secrets** > New client secret
 4. **API permissions** > Add the following **delegated** permissions:
    - `User.Read`

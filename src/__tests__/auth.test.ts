@@ -563,7 +563,7 @@ describe('waitForAuthCallback', () => {
 
     // Make a valid callback request using real fetch
     const res = await realFetch(
-      `http://127.0.0.1:${port}/callback?code=my-auth-code&state=${state}`,
+      `http://127.0.0.1:${port}/auth/callback?code=my-auth-code&state=${state}`,
     );
     expect(res.status).toBe(200);
     const body = await res.text();
@@ -597,7 +597,9 @@ describe('waitForAuthCallback', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const res = await realFetch(`http://127.0.0.1:${port}/callback?code=test&state=wrong-state`);
+    const res = await realFetch(
+      `http://127.0.0.1:${port}/auth/callback?code=test&state=wrong-state`,
+    );
     expect(res.status).toBe(400);
     const body = await res.text();
     expect(body).toContain('State mismatch');
@@ -616,7 +618,7 @@ describe('waitForAuthCallback', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const res = await realFetch(
-      `http://127.0.0.1:${port}/callback?error=access_denied&error_description=User+cancelled`,
+      `http://127.0.0.1:${port}/auth/callback?error=access_denied&error_description=User+cancelled`,
     );
     expect(res.status).toBe(400);
     const body = await res.text();
@@ -635,7 +637,7 @@ describe('waitForAuthCallback', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    await realFetch(`http://127.0.0.1:${port}/callback?error=access_denied`);
+    await realFetch(`http://127.0.0.1:${port}/auth/callback?error=access_denied`);
 
     const error = await rejectionPromise;
     expect(error).toBeInstanceOf(Error);
@@ -651,7 +653,7 @@ describe('waitForAuthCallback', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const res = await realFetch(`http://127.0.0.1:${port}/callback?state=${state}`);
+    const res = await realFetch(`http://127.0.0.1:${port}/auth/callback?state=${state}`);
     expect(res.status).toBe(400);
     const body = await res.text();
     expect(body).toContain('No authorization code received');

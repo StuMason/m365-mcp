@@ -11,6 +11,8 @@ import type { TokenData, AuthConfig } from '../types/tokens.js';
 const TOKEN_FILENAME = 'tokens.json';
 const EXPIRY_BUFFER_MS = 120_000; // 2 minutes
 const AUTH_TIMEOUT_MS = 300_000; // 5 minutes
+const AUTH_PORT = 19284;
+const CALLBACK_PATH = '/auth/callback';
 
 function escapeHtml(text: string): string {
   return text
@@ -230,7 +232,7 @@ export function waitForAuthCallback(
     }, timeoutMs);
 
     httpServer = createHttpServer((req, res) => {
-      if (!req.url?.startsWith('/callback')) {
+      if (!req.url?.startsWith(CALLBACK_PATH)) {
         res.writeHead(404);
         res.end('Not found');
         return;
@@ -297,8 +299,8 @@ export function waitForAuthCallback(
  * exchanges the authorization code for tokens, saves them, and returns the TokenData.
  */
 export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
-  const port = await findAvailablePort();
-  const redirectUri = `http://localhost:${port}/callback`;
+  const port = AUTH_PORT;
+  const redirectUri = `http://localhost:${port}${CALLBACK_PATH}`;
   const state = randomBytes(16).toString('hex');
 
   const authUrl = new URL(
