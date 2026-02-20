@@ -444,15 +444,40 @@ describe('executeTranscripts', () => {
       expect(result).toContain('Error: Invalid transcript_id format');
     });
 
-    it('uses (Unknown meeting) when subject fetch fails with non-retryable error', async () => {
+    it('falls back to beta for meeting subject on 404', async () => {
       const vttContent = 'WEBVTT\n\nContent here';
 
       mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
 
-      // 404 is not retryable — no beta fallback
+      // v1.0 returns 404 — now retryable via beta
       mockGraphFetch.mockResolvedValueOnce({
         ok: false,
         error: { status: 404, message: 'Not found' },
+      });
+
+      // beta succeeds
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Found via Beta' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+      });
+
+      expect(result).toContain('# Transcript: Found via Beta');
+      expect(result).toContain(vttContent);
+    });
+
+    it('shows (Unknown meeting) when error is not retryable (e.g. 500)', async () => {
+      const vttContent = 'WEBVTT\n\nContent here';
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      // 500 is not retryable — no beta fallback
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: false,
+        error: { status: 500, message: 'Server error' },
       });
 
       const result = await executeTranscripts('test-token', {
