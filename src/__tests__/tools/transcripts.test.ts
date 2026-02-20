@@ -154,13 +154,33 @@ describe('parseTranscriptId', () => {
 // ── matchTranscriptsToEvent ────────────────────────────────────────────────
 
 describe('matchTranscriptsToEvent', () => {
-  it('returns single transcript without filtering', () => {
+  it('returns single transcript when close to event', () => {
+    const transcripts = [{ id: 'tx-1', createdDateTime: '2025-06-15T10:02:00Z' }];
+    const event = { start: { dateTime: '2025-06-15T10:00:00' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toEqual([{ id: 'tx-1', createdDateTime: '2025-06-15T10:02:00Z' }]);
+  });
+
+  it('skips single transcript when far from event (recurring meeting, different occurrence)', () => {
     const transcripts = [{ id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' }];
+    // Event is 7 days later — different occurrence of recurring meeting
     const event = { start: { dateTime: '2025-06-22T10:00:00' } };
 
     const result = matchTranscriptsToEvent(transcripts, event);
 
-    expect(result).toEqual([{ id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' }]);
+    expect(result).toHaveLength(0);
+  });
+
+  it('returns single transcript without createdDateTime as fallback', () => {
+    const transcripts = [{ id: 'tx-1' }];
+    const event = { start: { dateTime: '2025-06-15T10:00:00' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    // No createdDateTime means we can't match — fall back to returning it
+    expect(result).toEqual([{ id: 'tx-1' }]);
   });
 
   it('returns closest transcript when multiple exist', () => {
@@ -424,11 +444,12 @@ describe('executeTranscripts', () => {
       expect(result).toContain('Error: Invalid transcript_id format');
     });
 
-    it('uses (Unknown meeting) when subject fetch fails', async () => {
+    it('uses (Unknown meeting) when subject fetch fails with non-retryable error', async () => {
       const vttContent = 'WEBVTT\n\nContent here';
 
       mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
 
+      // 404 is not retryable — no beta fallback
       mockGraphFetch.mockResolvedValueOnce({
         ok: false,
         error: { status: 404, message: 'Not found' },
@@ -440,6 +461,59 @@ describe('executeTranscripts', () => {
 
       expect(result).toContain('# Transcript: (Unknown meeting)');
       expect(result).toContain(vttContent);
+    });
+
+    it('falls back to beta for meeting subject on 403', async () => {
+      const vttContent = 'WEBVTT\n\nBeta subject content';
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      // v1.0 subject fetch fails with 403
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: false,
+        error: { status: 403, message: 'Forbidden' },
+      });
+
+      // beta subject fetch succeeds
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Beta Subject Meeting' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+      });
+
+      expect(result).toContain('# Transcript: Beta Subject Meeting');
+      expect(mockGraphFetch).toHaveBeenCalledWith(
+        expect.stringContaining('onlineMeetings'),
+        'test-token',
+        { beta: true },
+      );
+    });
+
+    it('shows (Unknown meeting) when both v1.0 and beta subject fetch fail', async () => {
+      const vttContent = 'WEBVTT\n\nContent';
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      // v1.0 fails with 400
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: false,
+        error: { status: 400, message: 'Bad request' },
+      });
+
+      // beta also fails
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: false,
+        error: { status: 400, message: 'Bad request' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+      });
+
+      expect(result).toContain('# Transcript: (Unknown meeting)');
     });
   });
 

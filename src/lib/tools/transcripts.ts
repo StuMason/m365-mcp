@@ -137,12 +137,13 @@ export function matchTranscriptsToEvent(
   transcripts: TranscriptEntry[],
   event: CalendarEvent,
 ): TranscriptEntry[] {
-  if (transcripts.length <= 1) {
-    return transcripts;
+  if (transcripts.length === 0) {
+    return [];
   }
 
   const eventStartStr = event.start?.dateTime;
   if (!eventStartStr) {
+    // No event start time — can't match, return all transcripts as fallback
     return transcripts;
   }
 
@@ -260,14 +261,20 @@ async function executeDrillDown(
     return 'Error: Could not fetch transcript content. The transcript may have been deleted or you may lack permissions.';
   }
 
-  // Fetch meeting subject (non-critical)
+  // Fetch meeting subject (non-critical — try v1.0, fall back to beta)
   let subject = '(Unknown meeting)';
-  const meetingResult = await graphFetch<OnlineMeetingResponse>(
-    `/me/onlineMeetings/${encodeURIComponent(meetingId)}?$select=subject`,
-    token,
-  );
+  const subjectPath = `/me/onlineMeetings/${encodeURIComponent(meetingId)}?$select=subject`;
+  const meetingResult = await graphFetch<OnlineMeetingResponse>(subjectPath, token);
   if (meetingResult.ok && meetingResult.data.subject) {
     subject = meetingResult.data.subject;
+  } else if (
+    !meetingResult.ok &&
+    (meetingResult.error.status === 403 || meetingResult.error.status === 400)
+  ) {
+    const betaResult = await graphFetch<OnlineMeetingResponse>(subjectPath, token, { beta: true });
+    if (betaResult.ok && betaResult.data.subject) {
+      subject = betaResult.data.subject;
+    }
   }
 
   const totalLength = vtt.length;

@@ -30,7 +30,7 @@ try {
   process.exit(1);
 }
 
-const server = new Server({ name: 'm365-mcp', version: '0.4.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'm365-mcp', version: '0.5.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -86,6 +86,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args as {
             search?: string;
             count?: number;
+            message_id?: string;
           },
         );
         break;
