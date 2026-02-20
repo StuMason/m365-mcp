@@ -21,7 +21,7 @@ const mockFetch = jest.fn<typeof globalThis.fetch>();
 globalThis.fetch = mockFetch as typeof globalThis.fetch;
 
 // Dynamic import AFTER mocks are registered
-const { executeTranscripts, extractMeetingId, parseTranscriptId } =
+const { executeTranscripts, extractMeetingId, parseTranscriptId, matchTranscriptsToEvent } =
   await import('../../lib/tools/transcripts.js');
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -151,6 +151,98 @@ describe('parseTranscriptId', () => {
   });
 });
 
+// ── matchTranscriptsToEvent ────────────────────────────────────────────────
+
+describe('matchTranscriptsToEvent', () => {
+  it('returns single transcript without filtering', () => {
+    const transcripts = [{ id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' }];
+    const event = { start: { dateTime: '2025-06-22T10:00:00' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toEqual([{ id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' }]);
+  });
+
+  it('returns closest transcript when multiple exist', () => {
+    const transcripts = [
+      { id: 'tx-week1', createdDateTime: '2025-06-15T10:02:00Z' },
+      { id: 'tx-week2', createdDateTime: '2025-06-22T10:03:00Z' },
+      { id: 'tx-week3', createdDateTime: '2025-06-29T10:01:00Z' },
+    ];
+    const event = { start: { dateTime: '2025-06-22T10:00:00Z' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toEqual([{ id: 'tx-week2', createdDateTime: '2025-06-22T10:03:00Z' }]);
+  });
+
+  it('returns all transcripts when event has no start time', () => {
+    const transcripts = [
+      { id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' },
+      { id: 'tx-2', createdDateTime: '2025-06-22T10:00:00Z' },
+    ];
+    const event = {};
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it('returns all transcripts when no createdDateTime available', () => {
+    const transcripts = [{ id: 'tx-1' }, { id: 'tx-2' }];
+    const event = { start: { dateTime: '2025-06-15T10:00:00' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it('returns empty array for zero transcripts', () => {
+    const event = { start: { dateTime: '2025-06-15T10:00:00' } };
+
+    const result = matchTranscriptsToEvent([], event);
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('ignores transcripts with invalid createdDateTime', () => {
+    const transcripts = [
+      { id: 'tx-bad', createdDateTime: 'not-a-date' },
+      { id: 'tx-good', createdDateTime: '2025-06-15T10:05:00Z' },
+    ];
+    const event = { start: { dateTime: '2025-06-15T10:00:00' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toEqual([{ id: 'tx-good', createdDateTime: '2025-06-15T10:05:00Z' }]);
+  });
+
+  it('returns all when event start dateTime is invalid', () => {
+    const transcripts = [
+      { id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' },
+      { id: 'tx-2', createdDateTime: '2025-06-22T10:00:00Z' },
+    ];
+    const event = { start: { dateTime: 'not-a-date' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it('returns empty when closest transcript is beyond 24-hour threshold', () => {
+    const transcripts = [
+      { id: 'tx-1', createdDateTime: '2025-06-15T10:00:00Z' },
+      { id: 'tx-2', createdDateTime: '2025-06-22T10:00:00Z' },
+    ];
+    // Event is 4 days away from nearest transcript
+    const event = { start: { dateTime: '2025-06-19T10:00:00Z' } };
+
+    const result = matchTranscriptsToEvent(transcripts, event);
+
+    expect(result).toHaveLength(0);
+  });
+});
+
 // ── executeTranscripts ─────────────────────────────────────────────────────
 
 describe('executeTranscripts', () => {
@@ -162,13 +254,11 @@ describe('executeTranscripts', () => {
   // ── Drill-down mode ──────────────────────────────────────────────────
 
   describe('drill-down mode', () => {
-    it('returns full transcript for valid compound ID', async () => {
+    it('returns short transcript marked as complete', async () => {
       const vttContent = 'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world';
 
-      // VTT content fetch (raw fetch, v1.0 succeeds)
       mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
 
-      // Meeting subject fetch
       mockGraphFetch.mockResolvedValueOnce({
         ok: true,
         data: { subject: 'Team Standup' },
@@ -179,18 +269,100 @@ describe('executeTranscripts', () => {
       });
 
       expect(result).toContain('# Transcript: Team Standup');
+      expect(result).toContain('(complete)');
       expect(result).toContain(vttContent);
+      expect(result).not.toContain('To continue reading');
+    });
+
+    it('paginates long transcript with continuation instructions', async () => {
+      const vttContent = 'WEBVTT\n\n' + 'A'.repeat(15_000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Long Meeting' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting123/transcript456',
+      });
+
+      expect(result).toContain('# Transcript: Long Meeting');
+      expect(result).toContain(`Length: ${vttContent.length} chars`);
+      expect(result).toContain('Showing: 0–10000');
+      expect(result).toContain(`Remaining: ${vttContent.length - 10000}`);
+      expect(result).toContain('To continue reading');
+      expect(result).toContain('offset=10000');
+      // Should not contain the full content
+      expect(result).not.toContain('A'.repeat(15_000));
+    });
+
+    it('returns next chunk when offset is provided', async () => {
+      const vttContent = 'B'.repeat(5000) + 'C'.repeat(5000) + 'D'.repeat(5000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Offset Test' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+        offset: 10000,
+      });
+
+      expect(result).toContain('Showing: 10000–15000');
+      expect(result).toContain('Remaining: 0');
+      expect(result).not.toContain('To continue reading');
+      // Should contain only 'D' content
+      expect(result).toContain('D'.repeat(5000));
+    });
+
+    it('respects custom length parameter', async () => {
+      const vttContent = 'X'.repeat(30_000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Custom Length' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+        length: 20000,
+      });
+
+      expect(result).toContain('Showing: 0–20000');
+      expect(result).toContain('Remaining: 10000');
+    });
+
+    it('clamps length to max 50000', async () => {
+      const vttContent = 'Y'.repeat(80_000);
+
+      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
+
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { subject: 'Max Length' },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        transcript_id: 'meeting/transcript',
+        length: 999999,
+      });
+
+      expect(result).toContain('Showing: 0–50000');
     });
 
     it('falls back to beta when v1.0 returns 403', async () => {
       const vttContent = 'WEBVTT\n\nFallback content';
 
-      // v1.0 returns 403
       mockFetch.mockResolvedValueOnce(mockResponse('Forbidden', 403));
-      // beta returns successfully
       mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
 
-      // Meeting subject
       mockGraphFetch.mockResolvedValueOnce({
         ok: true,
         data: { subject: 'Beta Meeting' },
@@ -303,10 +475,6 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'transcript-001' }] },
       });
 
-      // VTT content
-      const vttContent = 'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello from sprint';
-      mockFetch.mockResolvedValueOnce(mockResponse(vttContent));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
       expect(result).toContain('Found 1 meetings, 1 with transcripts.');
@@ -314,43 +482,8 @@ describe('executeTranscripts', () => {
       expect(result).toContain('Date: 2025-06-15T10:00:00');
       expect(result).toContain('Attendees: Alice, Bob');
       expect(result).toContain(`Transcript ID: ${meetingId}/transcript-001`);
-      expect(result).toContain(vttContent);
-    });
-
-    it('truncates VTT preview to ~3000 chars', async () => {
-      const threadId = '19:meeting_long@thread.v2';
-      const oid = 'oid-long';
-      const joinUrl = makeJoinUrl(threadId, oid);
-
-      // Calendar view
-      mockGraphFetch.mockResolvedValueOnce({
-        ok: true,
-        data: {
-          value: [
-            {
-              subject: 'Long Meeting',
-              start: { dateTime: '2025-06-15T10:00:00' },
-              onlineMeeting: { joinUrl },
-            },
-          ],
-        },
-      });
-
-      // Transcripts list
-      mockGraphFetch.mockResolvedValueOnce({
-        ok: true,
-        data: { value: [{ id: 'tx-long' }] },
-      });
-
-      // Long VTT content
-      const longVtt = 'WEBVTT\n\n' + 'A'.repeat(4000);
-      mockFetch.mockResolvedValueOnce(mockResponse(longVtt));
-
-      const result = await executeTranscripts('test-token', { date: '2025-06-15' });
-
-      expect(result).toContain('... [truncated — use transcript_id for full content]');
-      // The preview should not contain the full 4000-char string
-      expect(result).not.toContain('A'.repeat(4000));
+      // List mode no longer fetches VTT previews — drill-down handles full content
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('handles empty calendar (no meetings)', async () => {
@@ -480,15 +613,13 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'tx-500' }] },
       });
 
-      // v1.0 VTT fetch returns 500 (non-retryable)
-      mockFetch.mockResolvedValueOnce(mockResponse('Internal Server Error', 500));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
-      // Meeting has transcripts but VTT download failed — still shows meeting without preview
+      // Meeting has transcripts — listed without VTT preview
       expect(result).toContain('1 with transcripts');
       expect(result).toContain('Server Error Meeting');
-      expect(mockFetch).toHaveBeenCalledTimes(1); // No beta retry for 500
+      // List mode no longer fetches VTT content
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('skips meeting when both v1.0 and beta transcript listing fail with non-retryable error', async () => {
@@ -559,9 +690,6 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'tx-beta' }] },
       });
 
-      // VTT content
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nBeta content'));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
       expect(result).toContain('1 with transcripts');
@@ -598,15 +726,126 @@ describe('executeTranscripts', () => {
         data: { value: [{ id: 'tx-1' }] },
       });
 
-      // VTT content
-      mockFetch.mockResolvedValueOnce(mockResponse('WEBVTT\n\nOnline content'));
-
       const result = await executeTranscripts('test-token', { date: '2025-06-15' });
 
       // Only 1 meeting (with joinUrl) counted, 1 with transcripts
       expect(result).toContain('Found 1 meetings, 1 with transcripts.');
       expect(result).toContain('Online Meeting');
       expect(result).not.toContain('In-Person Meeting');
+    });
+
+    it('matches correct transcript to each occurrence of a recurring meeting', async () => {
+      const threadId = '19:recurring_standup@thread.v2';
+      const oid = 'organizer-oid';
+      const joinUrl = makeJoinUrl(threadId, oid);
+      const meetingId = Buffer.from(`1*${oid}*0**${threadId}`).toString('base64');
+
+      // Calendar view returns two occurrences with the SAME join URL
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [
+            {
+              subject: 'Weekly Standup',
+              start: { dateTime: '2025-06-15T10:00:00' },
+              end: { dateTime: '2025-06-15T10:30:00' },
+              onlineMeeting: { joinUrl },
+            },
+            {
+              subject: 'Weekly Standup',
+              start: { dateTime: '2025-06-22T10:00:00' },
+              end: { dateTime: '2025-06-22T10:30:00' },
+              onlineMeeting: { joinUrl },
+            },
+          ],
+        },
+      });
+
+      // Transcript list fetched ONCE (cached for second occurrence)
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [
+            { id: 'tx-week1', createdDateTime: '2025-06-15T10:02:00Z' },
+            { id: 'tx-week2', createdDateTime: '2025-06-22T10:03:00Z' },
+          ],
+        },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        start: '2025-06-14T00:00:00Z',
+        end: '2025-06-23T00:00:00Z',
+      });
+
+      // Both occurrences found with transcripts
+      expect(result).toContain('2 with transcripts');
+
+      // Each occurrence has its own distinct transcript ID
+      expect(result).toContain(`${meetingId}/tx-week1`);
+      expect(result).toContain(`${meetingId}/tx-week2`);
+
+      // List mode no longer fetches VTT content
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      // Transcript list fetched only once (not twice) — cached for recurring
+      const transcriptCalls = mockGraphFetch.mock.calls.filter((call) =>
+        (call[0] as string).includes('/transcripts'),
+      );
+      expect(transcriptCalls).toHaveLength(1);
+    });
+
+    it('skips recurring occurrence that has no matching transcript', async () => {
+      const threadId = '19:recurring_weekly@thread.v2';
+      const oid = 'oid-recurring';
+      const joinUrl = makeJoinUrl(threadId, oid);
+      const meetingId = Buffer.from(`1*${oid}*0**${threadId}`).toString('base64');
+
+      // Three occurrences, but only two have transcripts
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [
+            {
+              subject: 'Team Sync',
+              start: { dateTime: '2025-06-08T14:00:00' },
+              onlineMeeting: { joinUrl },
+            },
+            {
+              subject: 'Team Sync',
+              start: { dateTime: '2025-06-15T14:00:00' },
+              onlineMeeting: { joinUrl },
+            },
+            {
+              subject: 'Team Sync',
+              start: { dateTime: '2025-06-22T14:00:00' },
+              onlineMeeting: { joinUrl },
+            },
+          ],
+        },
+      });
+
+      // Only two transcripts exist (meeting on Jun 15 wasn't recorded)
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [
+            { id: 'tx-jun8', createdDateTime: '2025-06-08T14:01:00Z' },
+            { id: 'tx-jun22', createdDateTime: '2025-06-22T14:02:00Z' },
+          ],
+        },
+      });
+
+      const result = await executeTranscripts('test-token', {
+        start: '2025-06-01T00:00:00Z',
+        end: '2025-06-30T00:00:00Z',
+      });
+
+      // 3 meetings found, but only 2 have matching transcripts
+      expect(result).toContain('Found 3 meetings, 2 with transcripts.');
+      expect(result).toContain(`${meetingId}/tx-jun8`);
+      expect(result).toContain(`${meetingId}/tx-jun22`);
+      // List mode no longer fetches VTT content
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

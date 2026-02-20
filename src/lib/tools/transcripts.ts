@@ -1,9 +1,15 @@
 import { graphFetch } from '../graph.js';
 
+const DEFAULT_CHUNK_SIZE = 10_000;
+const MAX_CHUNK_SIZE = 50_000;
+
 export const transcriptsToolDefinition = {
   name: 'ms_transcripts',
   description:
-    'Fetch meeting transcripts from Microsoft Teams. Returns preview (~3000 chars) + transcript_id for drill-down. Use transcript_id to get the full transcript.',
+    'Fetch meeting transcripts from Microsoft Teams. ' +
+    'Without transcript_id: lists meetings with ~3000 char previews. ' +
+    'With transcript_id: returns transcript content in chunks (default 10,000 chars). ' +
+    'Use offset to paginate through long transcripts.',
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -12,7 +18,16 @@ export const transcriptsToolDefinition = {
       end: { type: 'string', description: 'End of date range (ISO 8601)' },
       transcript_id: {
         type: 'string',
-        description: 'Transcript ID for full content drill-down (from a previous list call)',
+        description: 'Transcript ID for content drill-down (from a previous list call)',
+      },
+      offset: {
+        type: 'integer',
+        description:
+          'Character offset for pagination (default 0). Use the value from the previous response to continue reading.',
+      },
+      length: {
+        type: 'integer',
+        description: 'Max characters to return (default 10000, max 50000)',
       },
     },
   },
@@ -33,6 +48,7 @@ interface CalendarViewResponse {
 
 interface TranscriptEntry {
   id: string;
+  createdDateTime?: string;
 }
 
 interface TranscriptsResponse {
@@ -110,6 +126,64 @@ function todayRange(): { start: string; end: string } {
 }
 
 /**
+ * Matches transcripts to a specific calendar event occurrence.
+ * For recurring meetings (multiple transcripts sharing the same meeting ID),
+ * finds the transcript whose createdDateTime is closest to the event's start time.
+ *
+ * When there's only one transcript, returns it without filtering.
+ * When no createdDateTime data is available, falls back to returning all transcripts.
+ */
+export function matchTranscriptsToEvent(
+  transcripts: TranscriptEntry[],
+  event: CalendarEvent,
+): TranscriptEntry[] {
+  if (transcripts.length <= 1) {
+    return transcripts;
+  }
+
+  const eventStartStr = event.start?.dateTime;
+  if (!eventStartStr) {
+    return transcripts;
+  }
+
+  const eventStartMs = new Date(eventStartStr).getTime();
+  if (isNaN(eventStartMs)) {
+    return transcripts;
+  }
+
+  // Find transcript with createdDateTime closest to event start
+  let closest: TranscriptEntry | null = null;
+  let closestDiff = Infinity;
+
+  for (const t of transcripts) {
+    if (!t.createdDateTime) continue;
+    const createdMs = new Date(t.createdDateTime).getTime();
+    if (isNaN(createdMs)) continue;
+    const diff = Math.abs(createdMs - eventStartMs);
+    if (diff < closestDiff) {
+      closest = t;
+      closestDiff = diff;
+    }
+  }
+
+  // Only match if within 24 hours — handles timezone discrepancies between
+  // event times (user's preferred timezone) and transcript UTC timestamps,
+  // while still distinguishing daily recurring meeting occurrences.
+  const MAX_DIFF_MS = 24 * 60 * 60 * 1000;
+  if (closest && closestDiff <= MAX_DIFF_MS) {
+    return [closest];
+  }
+
+  if (!closest) {
+    // No transcripts have valid createdDateTime — fall back to returning all
+    return transcripts;
+  }
+
+  // Closest transcript is too far from this event — no match for this occurrence
+  return [];
+}
+
+/**
  * Fetches VTT transcript content using raw fetch (not graphFetch, since it returns text).
  * Tries v1.0 first, falls back to beta on 403/400.
  */
@@ -166,9 +240,14 @@ async function fetchTranscriptsList(
 }
 
 /**
- * Handles drill-down mode: fetch full transcript by compound ID.
+ * Handles drill-down mode: fetch transcript by compound ID with pagination.
  */
-async function executeDrillDown(token: string, compoundId: string): Promise<string> {
+async function executeDrillDown(
+  token: string,
+  compoundId: string,
+  offset: number,
+  length: number,
+): Promise<string> {
   const parsed = parseTranscriptId(compoundId);
   if (!parsed) {
     return 'Error: Invalid transcript_id format. Expected "{meetingId}/{transcriptId}".';
@@ -191,7 +270,32 @@ async function executeDrillDown(token: string, compoundId: string): Promise<stri
     subject = meetingResult.data.subject;
   }
 
-  return `# Transcript: ${subject}\n\n${vtt}`;
+  const totalLength = vtt.length;
+
+  // Short transcript — return it all, no pagination needed
+  if (totalLength <= length) {
+    return `# Transcript: ${subject}\nLength: ${totalLength} chars (complete)\n\n${vtt}`;
+  }
+
+  // Paginated: slice the requested chunk
+  const chunk = vtt.slice(offset, offset + length);
+  const end = offset + chunk.length;
+  const remaining = totalLength - end;
+
+  const lines: string[] = [];
+  lines.push(`# Transcript: ${subject}`);
+  lines.push(`Length: ${totalLength} chars | Showing: ${offset}–${end} | Remaining: ${remaining}`);
+  lines.push('');
+  lines.push(chunk);
+
+  if (remaining > 0) {
+    lines.push('');
+    lines.push(
+      `--- To continue reading, call again with transcript_id="${compoundId}" offset=${end} ---`,
+    );
+  }
+
+  return lines.join('\n');
 }
 
 /**
@@ -241,6 +345,27 @@ async function executeList(
     return 'No Teams meetings found in the given date range.';
   }
 
+  // Extract unique meeting IDs and map events to them
+  const meetingIdMap = new Map<string, string>(); // joinUrl -> meetingId
+  const uniqueMeetingIds = new Set<string>();
+
+  for (const event of meetingEvents) {
+    const joinUrl = event.onlineMeeting?.joinUrl;
+    if (!joinUrl || meetingIdMap.has(joinUrl)) continue;
+    const meetingId = extractMeetingId(joinUrl);
+    if (!meetingId) continue;
+    meetingIdMap.set(joinUrl, meetingId);
+    uniqueMeetingIds.add(meetingId);
+  }
+
+  // Fetch all transcript lists in parallel (one per unique meeting ID)
+  const transcriptCache = new Map<string, TranscriptEntry[]>();
+  const fetchPromises = [...uniqueMeetingIds].map(async (meetingId) => {
+    const data = await fetchTranscriptsList(token, meetingId);
+    transcriptCache.set(meetingId, data?.value ?? []);
+  });
+  await Promise.all(fetchPromises);
+
   const sections: string[] = [];
   let transcriptCount = 0;
 
@@ -248,28 +373,20 @@ async function executeList(
     const joinUrl = event.onlineMeeting?.joinUrl;
     if (!joinUrl) continue;
 
-    const meetingId = extractMeetingId(joinUrl);
+    const meetingId = meetingIdMap.get(joinUrl);
     if (!meetingId) continue;
 
-    // Check for transcripts
-    const transcriptsData = await fetchTranscriptsList(token, meetingId);
-    if (!transcriptsData || transcriptsData.value.length === 0) continue;
+    const allTranscripts = transcriptCache.get(meetingId);
+    if (!allTranscripts || allTranscripts.length === 0) continue;
+
+    // Match transcripts to this specific event occurrence (handles recurring meetings)
+    const eventTranscripts = matchTranscriptsToEvent(allTranscripts, event);
+    if (eventTranscripts.length === 0) continue;
 
     transcriptCount++;
 
-    const firstTranscript = transcriptsData.value[0];
+    const firstTranscript = eventTranscripts[0];
     const compoundId = `${meetingId}/${firstTranscript.id}`;
-
-    // Download VTT preview
-    let vttPreview = '';
-    const vtt = await fetchVttContent(token, meetingId, firstTranscript.id);
-    if (vtt) {
-      if (vtt.length > 3000) {
-        vttPreview = vtt.slice(0, 3000) + '\n... [truncated — use transcript_id for full content]';
-      } else {
-        vttPreview = vtt;
-      }
-    }
 
     const lines: string[] = [];
     lines.push(`## ${event.subject || 'Untitled'}`);
@@ -284,11 +401,6 @@ async function executeList(
     }
 
     lines.push(`Transcript ID: ${compoundId}`);
-
-    if (vttPreview) {
-      lines.push('');
-      lines.push(vttPreview);
-    }
 
     sections.push(lines.join('\n'));
   }
@@ -307,14 +419,23 @@ async function executeList(
 
 /**
  * Fetches meeting transcripts from Microsoft Teams.
- * Supports two modes: list (date range) and drill-down (specific transcript).
+ * Supports two modes: list (date range) and drill-down (specific transcript with pagination).
  */
 export async function executeTranscripts(
   token: string,
-  args: { date?: string; start?: string; end?: string; transcript_id?: string },
+  args: {
+    date?: string;
+    start?: string;
+    end?: string;
+    transcript_id?: string;
+    offset?: number;
+    length?: number;
+  },
 ): Promise<string> {
   if (args.transcript_id) {
-    return executeDrillDown(token, args.transcript_id);
+    const offset = Math.max(args.offset ?? 0, 0);
+    const length = Math.min(Math.max(args.length ?? DEFAULT_CHUNK_SIZE, 1), MAX_CHUNK_SIZE);
+    return executeDrillDown(token, args.transcript_id, offset, length);
   }
   return executeList(token, args);
 }
