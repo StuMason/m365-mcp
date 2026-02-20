@@ -70,12 +70,14 @@ export async function executeMail(
 ): Promise<string> {
   const count = Math.min(Math.max(args.count ?? 10, 1), 25);
 
-  let path =
-    `/me/messages?$top=${count}&$orderby=receivedDateTime desc` +
-    `&$select=subject,from,receivedDateTime,bodyPreview,isRead,importance`;
+  const select = 'subject,from,receivedDateTime,bodyPreview,isRead,importance';
 
+  let path: string;
   if (args.search) {
-    path += `&$search="${encodeURIComponent(args.search)}"`;
+    // $orderBy is not supported with $search — Graph returns results by relevance
+    path = `/me/messages?$top=${count}&$select=${select}&$search="${encodeURIComponent(args.search)}"`;
+  } else {
+    path = `/me/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
   }
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
