@@ -3,7 +3,15 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync, existsSync 
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { TokenData, AuthConfig } from '../types/tokens.js';
-import {
+
+// Mock child_process to prevent browser tabs opening during tests
+const mockExecFile = jest.fn();
+jest.unstable_mockModule('node:child_process', () => ({
+  execFile: mockExecFile,
+}));
+
+// Dynamic import AFTER mock registration
+const {
   getConfigDir,
   loadTokens,
   saveTokens,
@@ -17,7 +25,7 @@ import {
   exchangeCodeForTokens,
   openBrowser,
   waitForAuthCallback,
-} from '../lib/auth.js';
+} = await import('../lib/auth.js');
 
 const sampleTokens: TokenData = {
   access_token: 'access-abc-123',
@@ -475,8 +483,26 @@ describe('findAvailablePort', () => {
 });
 
 describe('openBrowser', () => {
-  it('does not throw for a URL string', () => {
-    // openBrowser calls execFile which may fail, but should not throw
+  afterEach(() => {
+    mockExecFile.mockClear();
+  });
+
+  it('calls execFile with the correct command for the platform', () => {
+    openBrowser('https://example.com');
+
+    // On macOS (darwin), should call 'open'
+    if (process.platform === 'darwin') {
+      expect(mockExecFile).toHaveBeenCalledWith('open', ['https://example.com']);
+    } else {
+      expect(mockExecFile).toHaveBeenCalled();
+    }
+  });
+
+  it('does not throw when execFile throws', () => {
+    mockExecFile.mockImplementation(() => {
+      throw new Error('Command not found');
+    });
+
     expect(() => openBrowser('https://example.com')).not.toThrow();
   });
 });

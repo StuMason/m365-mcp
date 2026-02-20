@@ -33,6 +33,7 @@ interface CalendarViewResponse {
 
 interface TranscriptEntry {
   id: string;
+  createdDateTime?: string;
 }
 
 interface TranscriptsResponse {
@@ -107,6 +108,64 @@ function todayRange(): { start: string; end: string } {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return dateRangeForDay(`${year}-${month}-${day}`)!;
+}
+
+/**
+ * Matches transcripts to a specific calendar event occurrence.
+ * For recurring meetings (multiple transcripts sharing the same meeting ID),
+ * finds the transcript whose createdDateTime is closest to the event's start time.
+ *
+ * When there's only one transcript, returns it without filtering.
+ * When no createdDateTime data is available, falls back to returning all transcripts.
+ */
+export function matchTranscriptsToEvent(
+  transcripts: TranscriptEntry[],
+  event: CalendarEvent,
+): TranscriptEntry[] {
+  if (transcripts.length <= 1) {
+    return transcripts;
+  }
+
+  const eventStartStr = event.start?.dateTime;
+  if (!eventStartStr) {
+    return transcripts;
+  }
+
+  const eventStartMs = new Date(eventStartStr).getTime();
+  if (isNaN(eventStartMs)) {
+    return transcripts;
+  }
+
+  // Find transcript with createdDateTime closest to event start
+  let closest: TranscriptEntry | null = null;
+  let closestDiff = Infinity;
+
+  for (const t of transcripts) {
+    if (!t.createdDateTime) continue;
+    const createdMs = new Date(t.createdDateTime).getTime();
+    if (isNaN(createdMs)) continue;
+    const diff = Math.abs(createdMs - eventStartMs);
+    if (diff < closestDiff) {
+      closest = t;
+      closestDiff = diff;
+    }
+  }
+
+  // Only match if within 24 hours — handles timezone discrepancies between
+  // event times (user's preferred timezone) and transcript UTC timestamps,
+  // while still distinguishing daily recurring meeting occurrences.
+  const MAX_DIFF_MS = 24 * 60 * 60 * 1000;
+  if (closest && closestDiff <= MAX_DIFF_MS) {
+    return [closest];
+  }
+
+  if (!closest) {
+    // No transcripts have valid createdDateTime — fall back to returning all
+    return transcripts;
+  }
+
+  // Closest transcript is too far from this event — no match for this occurrence
+  return [];
 }
 
 /**
@@ -241,6 +300,10 @@ async function executeList(
     return 'No Teams meetings found in the given date range.';
   }
 
+  // Cache transcript lists by meeting ID to avoid redundant API calls
+  // for recurring meetings (which share the same join URL / meeting ID)
+  const transcriptCache = new Map<string, TranscriptEntry[]>();
+
   const sections: string[] = [];
   let transcriptCount = 0;
 
@@ -251,13 +314,22 @@ async function executeList(
     const meetingId = extractMeetingId(joinUrl);
     if (!meetingId) continue;
 
-    // Check for transcripts
-    const transcriptsData = await fetchTranscriptsList(token, meetingId);
-    if (!transcriptsData || transcriptsData.value.length === 0) continue;
+    // Fetch transcript list once per unique meeting ID
+    if (!transcriptCache.has(meetingId)) {
+      const transcriptsData = await fetchTranscriptsList(token, meetingId);
+      transcriptCache.set(meetingId, transcriptsData?.value ?? []);
+    }
+
+    const allTranscripts = transcriptCache.get(meetingId)!;
+    if (allTranscripts.length === 0) continue;
+
+    // Match transcripts to this specific event occurrence (handles recurring meetings)
+    const eventTranscripts = matchTranscriptsToEvent(allTranscripts, event);
+    if (eventTranscripts.length === 0) continue;
 
     transcriptCount++;
 
-    const firstTranscript = transcriptsData.value[0];
+    const firstTranscript = eventTranscripts[0];
     const compoundId = `${meetingId}/${firstTranscript.id}`;
 
     // Download VTT preview
