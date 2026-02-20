@@ -4,13 +4,28 @@ import { homedir } from 'node:os';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { URL } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import type { TokenData, AuthConfig } from '../types/tokens.js';
 
 const TOKEN_FILENAME = 'tokens.json';
 const EXPIRY_BUFFER_MS = 120_000; // 2 minutes
 const AUTH_TIMEOUT_MS = 300_000; // 5 minutes
+const DEFAULT_CALLBACK_PATH = '/callback';
+
+/**
+ * Generates a PKCE code verifier (43-128 char base64url random string).
+ */
+export function generateCodeVerifier(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * Derives a PKCE code challenge from a verifier using SHA-256.
+ */
+export function generateCodeChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -100,12 +115,11 @@ export function isTokenExpired(tokens: TokenData): boolean {
  */
 export function loadAuthConfig(): AuthConfig {
   const clientId = process.env['MS365_MCP_CLIENT_ID'];
-  const clientSecret = process.env['MS365_MCP_CLIENT_SECRET'];
+  const clientSecret = process.env['MS365_MCP_CLIENT_SECRET'] || undefined;
   const tenantId = process.env['MS365_MCP_TENANT_ID'];
 
   const missing: string[] = [];
   if (!clientId) missing.push('MS365_MCP_CLIENT_ID');
-  if (!clientSecret) missing.push('MS365_MCP_CLIENT_SECRET');
   if (!tenantId) missing.push('MS365_MCP_TENANT_ID');
 
   if (missing.length > 0) {
@@ -114,7 +128,7 @@ export function loadAuthConfig(): AuthConfig {
 
   return {
     clientId: clientId!,
-    clientSecret: clientSecret!,
+    clientSecret,
     tenantId: tenantId!,
   };
 }
@@ -170,19 +184,34 @@ export async function exchangeCodeForTokens(
   config: AuthConfig,
   code: string,
   redirectUri: string,
+  codeVerifier?: string,
 ): Promise<TokenData> {
   const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
-  const body = new URLSearchParams({
+  const params: Record<string, string> = {
     grant_type: 'authorization_code',
     client_id: config.clientId,
-    client_secret: config.clientSecret,
     code,
     redirect_uri: redirectUri,
-  });
+  };
+  if (config.clientSecret) {
+    params['client_secret'] = config.clientSecret;
+  }
+  if (codeVerifier) {
+    params['code_verifier'] = codeVerifier;
+  }
+  const body = new URLSearchParams(params);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+  if (redirectUri) {
+    const origin = new URL(redirectUri).origin;
+    headers['Origin'] = origin;
+  }
 
   const response = await fetch(tokenUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers,
     body: body.toString(),
   });
 
@@ -215,6 +244,7 @@ export function waitForAuthCallback(
   port: number,
   expectedState: string,
   timeoutMs: number = AUTH_TIMEOUT_MS,
+  callbackPath: string = DEFAULT_CALLBACK_PATH,
 ): { promise: Promise<string>; server: Server } {
   let httpServer!: Server;
 
@@ -230,7 +260,7 @@ export function waitForAuthCallback(
     }, timeoutMs);
 
     httpServer = createHttpServer((req, res) => {
-      if (!req.url?.startsWith('/callback')) {
+      if (!req.url?.startsWith(callbackPath)) {
         res.writeHead(404);
         res.end('Not found');
         return;
@@ -297,9 +327,26 @@ export function waitForAuthCallback(
  * exchanges the authorization code for tokens, saves them, and returns the TokenData.
  */
 export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
-  const port = await findAvailablePort();
-  const redirectUri = `http://localhost:${port}/callback`;
+  const redirectUrl = process.env['MS365_MCP_REDIRECT_URL'];
+
+  let port: number;
+  let callbackPath: string;
+  let redirectUri: string;
+
+  if (redirectUrl) {
+    const parsed = new URL(redirectUrl);
+    port = parseInt(parsed.port, 10) || 80;
+    callbackPath = parsed.pathname;
+    redirectUri = redirectUrl;
+  } else {
+    port = await findAvailablePort();
+    callbackPath = DEFAULT_CALLBACK_PATH;
+    redirectUri = `http://localhost:${port}${callbackPath}`;
+  }
+
   const state = randomBytes(16).toString('hex');
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
 
   const authUrl = new URL(
     `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/authorize`,
@@ -309,14 +356,16 @@ export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('scope', SCOPES.join(' '));
   authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set('code_challenge', codeChallenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
 
   process.stderr.write('Opening browser for Microsoft 365 sign-in...\n');
   openBrowser(authUrl.toString());
 
-  const { promise } = waitForAuthCallback(port, state);
+  const { promise } = waitForAuthCallback(port, state, AUTH_TIMEOUT_MS, callbackPath);
   const code = await promise;
 
-  const tokenData = await exchangeCodeForTokens(config, code, redirectUri);
+  const tokenData = await exchangeCodeForTokens(config, code, redirectUri, codeVerifier);
   saveTokens(tokenData);
   return tokenData;
 }
@@ -331,17 +380,28 @@ export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<TokenData | null> {
   const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
-  const body = new URLSearchParams({
+  const params: Record<string, string> = {
     grant_type: 'refresh_token',
     client_id: config.clientId,
-    client_secret: config.clientSecret,
     refresh_token: refreshToken,
-  });
+  };
+  if (config.clientSecret) {
+    params['client_secret'] = config.clientSecret;
+  }
+  const body = new URLSearchParams(params);
 
   try {
+    const refreshHeaders: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    const redirectUrl = process.env['MS365_MCP_REDIRECT_URL'];
+    if (redirectUrl) {
+      refreshHeaders['Origin'] = new URL(redirectUrl).origin;
+    }
+
     const response = await fetch(tokenUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: refreshHeaders,
       body: body.toString(),
     });
 
