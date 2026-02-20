@@ -345,9 +345,26 @@ async function executeList(
     return 'No Teams meetings found in the given date range.';
   }
 
-  // Cache transcript lists by meeting ID to avoid redundant API calls
-  // for recurring meetings (which share the same join URL / meeting ID)
+  // Extract unique meeting IDs and map events to them
+  const meetingIdMap = new Map<string, string>(); // joinUrl -> meetingId
+  const uniqueMeetingIds = new Set<string>();
+
+  for (const event of meetingEvents) {
+    const joinUrl = event.onlineMeeting?.joinUrl;
+    if (!joinUrl || meetingIdMap.has(joinUrl)) continue;
+    const meetingId = extractMeetingId(joinUrl);
+    if (!meetingId) continue;
+    meetingIdMap.set(joinUrl, meetingId);
+    uniqueMeetingIds.add(meetingId);
+  }
+
+  // Fetch all transcript lists in parallel (one per unique meeting ID)
   const transcriptCache = new Map<string, TranscriptEntry[]>();
+  const fetchPromises = [...uniqueMeetingIds].map(async (meetingId) => {
+    const data = await fetchTranscriptsList(token, meetingId);
+    transcriptCache.set(meetingId, data?.value ?? []);
+  });
+  await Promise.all(fetchPromises);
 
   const sections: string[] = [];
   let transcriptCount = 0;
@@ -356,17 +373,11 @@ async function executeList(
     const joinUrl = event.onlineMeeting?.joinUrl;
     if (!joinUrl) continue;
 
-    const meetingId = extractMeetingId(joinUrl);
+    const meetingId = meetingIdMap.get(joinUrl);
     if (!meetingId) continue;
 
-    // Fetch transcript list once per unique meeting ID
-    if (!transcriptCache.has(meetingId)) {
-      const transcriptsData = await fetchTranscriptsList(token, meetingId);
-      transcriptCache.set(meetingId, transcriptsData?.value ?? []);
-    }
-
-    const allTranscripts = transcriptCache.get(meetingId)!;
-    if (allTranscripts.length === 0) continue;
+    const allTranscripts = transcriptCache.get(meetingId);
+    if (!allTranscripts || allTranscripts.length === 0) continue;
 
     // Match transcripts to this specific event occurrence (handles recurring meetings)
     const eventTranscripts = matchTranscriptsToEvent(allTranscripts, event);
@@ -376,17 +387,6 @@ async function executeList(
 
     const firstTranscript = eventTranscripts[0];
     const compoundId = `${meetingId}/${firstTranscript.id}`;
-
-    // Download VTT preview
-    let vttPreview = '';
-    const vtt = await fetchVttContent(token, meetingId, firstTranscript.id);
-    if (vtt) {
-      if (vtt.length > 3000) {
-        vttPreview = vtt.slice(0, 3000) + '\n... [truncated — use transcript_id for full content]';
-      } else {
-        vttPreview = vtt;
-      }
-    }
 
     const lines: string[] = [];
     lines.push(`## ${event.subject || 'Untitled'}`);
@@ -401,11 +401,6 @@ async function executeList(
     }
 
     lines.push(`Transcript ID: ${compoundId}`);
-
-    if (vttPreview) {
-      lines.push('');
-      lines.push(vttPreview);
-    }
 
     sections.push(lines.join('\n'));
   }
