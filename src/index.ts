@@ -21,8 +21,11 @@ try {
   );
   process.stderr.write('\nRequired environment variables:\n');
   process.stderr.write('  MS365_MCP_CLIENT_ID      - Azure AD application (client) ID\n');
-  process.stderr.write('  MS365_MCP_CLIENT_SECRET   - Azure AD client secret\n');
   process.stderr.write('  MS365_MCP_TENANT_ID       - Azure AD tenant ID\n');
+  process.stderr.write('\nOptional:\n');
+  process.stderr.write(
+    '  MS365_MCP_CLIENT_SECRET   - Azure AD client secret (confidential clients only)\n',
+  );
   process.exit(1);
 }
 

@@ -115,12 +115,11 @@ export function isTokenExpired(tokens: TokenData): boolean {
  */
 export function loadAuthConfig(): AuthConfig {
   const clientId = process.env['MS365_MCP_CLIENT_ID'];
-  const clientSecret = process.env['MS365_MCP_CLIENT_SECRET'];
+  const clientSecret = process.env['MS365_MCP_CLIENT_SECRET'] || undefined;
   const tenantId = process.env['MS365_MCP_TENANT_ID'];
 
   const missing: string[] = [];
   if (!clientId) missing.push('MS365_MCP_CLIENT_ID');
-  if (!clientSecret) missing.push('MS365_MCP_CLIENT_SECRET');
   if (!tenantId) missing.push('MS365_MCP_TENANT_ID');
 
   if (missing.length > 0) {
@@ -129,7 +128,7 @@ export function loadAuthConfig(): AuthConfig {
 
   return {
     clientId: clientId!,
-    clientSecret: clientSecret!,
+    clientSecret,
     tenantId: tenantId!,
   };
 }
@@ -191,10 +190,12 @@ export async function exchangeCodeForTokens(
   const params: Record<string, string> = {
     grant_type: 'authorization_code',
     client_id: config.clientId,
-    client_secret: config.clientSecret,
     code,
     redirect_uri: redirectUri,
   };
+  if (config.clientSecret) {
+    params['client_secret'] = config.clientSecret;
+  }
   if (codeVerifier) {
     params['code_verifier'] = codeVerifier;
   }
@@ -371,12 +372,15 @@ export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<TokenData | null> {
   const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
-  const body = new URLSearchParams({
+  const params: Record<string, string> = {
     grant_type: 'refresh_token',
     client_id: config.clientId,
-    client_secret: config.clientSecret,
     refresh_token: refreshToken,
-  });
+  };
+  if (config.clientSecret) {
+    params['client_secret'] = config.clientSecret;
+  }
+  const body = new URLSearchParams(params);
 
   try {
     const response = await fetch(tokenUrl, {
