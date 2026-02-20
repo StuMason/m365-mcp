@@ -137,6 +137,35 @@ describe('graphFetch', () => {
     );
   });
 
+  it('uses MS365_MCP_TIMEZONE env var for timezone header', async () => {
+    const original = process.env['MS365_MCP_TIMEZONE'];
+    process.env['MS365_MCP_TIMEZONE'] = 'America/New_York';
+
+    try {
+      const mock = mockFetch({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Partial<Response>);
+
+      await graphFetch('/me', 'test-token');
+
+      expect(mock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Prefer: 'outlook.timezone="America/New_York"',
+          }),
+        }),
+      );
+    } finally {
+      if (original === undefined) {
+        delete process.env['MS365_MCP_TIMEZONE'];
+      } else {
+        process.env['MS365_MCP_TIMEZONE'] = original;
+      }
+    }
+  });
+
   it('excludes timezone header when timezone is false', async () => {
     const mock = mockFetch({
       ok: true,

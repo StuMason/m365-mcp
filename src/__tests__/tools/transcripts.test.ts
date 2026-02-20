@@ -455,6 +455,79 @@ describe('executeTranscripts', () => {
       );
     });
 
+    it('returns null VTT gracefully when v1.0 returns non-retryable status (e.g. 500)', async () => {
+      const threadId = '19:meeting_500@thread.v2';
+      const oid = 'oid-500';
+      const joinUrl = makeJoinUrl(threadId, oid);
+
+      // Calendar view
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [
+            {
+              subject: 'Server Error Meeting',
+              start: { dateTime: '2025-06-15T10:00:00' },
+              onlineMeeting: { joinUrl },
+            },
+          ],
+        },
+      });
+
+      // Transcripts list succeeds
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { value: [{ id: 'tx-500' }] },
+      });
+
+      // v1.0 VTT fetch returns 500 (non-retryable)
+      mockFetch.mockResolvedValueOnce(mockResponse('Internal Server Error', 500));
+
+      const result = await executeTranscripts('test-token', { date: '2025-06-15' });
+
+      // Meeting has transcripts but VTT download failed — still shows meeting without preview
+      expect(result).toContain('1 with transcripts');
+      expect(result).toContain('Server Error Meeting');
+      expect(mockFetch).toHaveBeenCalledTimes(1); // No beta retry for 500
+    });
+
+    it('skips meeting when both v1.0 and beta transcript listing fail with non-retryable error', async () => {
+      const threadId = '19:meeting_fail@thread.v2';
+      const oid = 'oid-fail';
+      const joinUrl = makeJoinUrl(threadId, oid);
+
+      // Calendar view
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [
+            {
+              subject: 'Failed Transcript List',
+              start: { dateTime: '2025-06-15T10:00:00' },
+              onlineMeeting: { joinUrl },
+            },
+          ],
+        },
+      });
+
+      // v1.0 transcript list fails with 500 (non-retryable)
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: false,
+        error: { status: 500, message: 'Server error' },
+      });
+
+      const result = await executeTranscripts('test-token', { date: '2025-06-15' });
+
+      // Meeting found but transcript listing failed — shows as "none have transcripts"
+      expect(result).toContain('none have transcripts');
+    });
+
+    it('returns error for invalid date format', async () => {
+      const result = await executeTranscripts('test-token', { date: 'not-a-date' });
+
+      expect(result).toBe('Error: Invalid date format. Expected YYYY-MM-DD.');
+    });
+
     it('falls back to beta for transcript listing on 403', async () => {
       const threadId = '19:meeting_beta@thread.v2';
       const oid = 'oid-beta';
