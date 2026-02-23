@@ -113,6 +113,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             path?: string;
             search?: string;
             count?: number;
+            item_id?: string;
+            shared?: boolean;
           },
         );
         break;
