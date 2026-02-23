@@ -20,7 +20,9 @@ describe('executeServerInfo', () => {
     expect(result).toContain('ms_files');
     expect(result).toContain('ms_transcripts');
     expect(result).toContain('ms_server_info');
-    expect(result).toContain('Tools (8)');
+    expect(result).toContain('ms_schedule');
+    expect(result).toContain('ms_sharepoint');
+    expect(result).toContain('Tools (10)');
   });
 
   it('shows environment variable status without exposing values', () => {
