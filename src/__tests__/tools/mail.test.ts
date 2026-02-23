@@ -1,13 +1,9 @@
 import { jest } from '@jest/globals';
-import type { GraphResult } from '../../lib/graph.js';
+import type { GraphResult, GraphFetchOptions } from '../../lib/graph.js';
 
 const mockGraphFetch =
   jest.fn<
-    <T>(
-      path: string,
-      token: string,
-      options?: { beta?: boolean; timezone?: boolean },
-    ) => Promise<GraphResult<T>>
+    <T>(path: string, token: string, options?: GraphFetchOptions) => Promise<GraphResult<T>>
   >();
 
 jest.unstable_mockModule('../../lib/graph.js', () => ({
@@ -345,6 +341,177 @@ describe('executeMail', () => {
 
       expect(result).toContain('Error:');
       expect(result).toContain('not found');
+    });
+  });
+
+  describe('folders mode', () => {
+    it('lists mail folders with unread counts', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          value: [
+            { displayName: 'Inbox', unreadItemCount: 3, totalItemCount: 150 },
+            { displayName: 'Sent Items', unreadItemCount: 0, totalItemCount: 42 },
+          ],
+        },
+      });
+
+      const result = await executeMail('test-token', { folders: true });
+
+      expect(result).toContain('Inbox');
+      expect(result).toContain('3 unread');
+      expect(result).toContain('150 total');
+      expect(result).toContain('Sent Items');
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain('/me/mailFolders');
+    });
+
+    it('returns message when no folders found', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      const result = await executeMail('test-token', { folders: true });
+
+      expect(result).toBe('No folders found.');
+    });
+  });
+
+  describe('folder messages mode', () => {
+    it('lists messages from a specific folder', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          value: [
+            {
+              id: 'msg-1',
+              subject: 'Folder Email',
+              from: { emailAddress: { name: 'Alice', address: 'alice@example.com' } },
+              receivedDateTime: '2025-06-15T10:00:00Z',
+              bodyPreview: 'Preview text',
+              isRead: true,
+              importance: 'normal',
+            },
+          ],
+        },
+      });
+
+      const result = await executeMail('test-token', { folder: 'Inbox' });
+
+      expect(result).toContain('## Folder Email');
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain('/me/mailFolders/Inbox/messages');
+    });
+  });
+
+  describe('attachments mode', () => {
+    it('lists attachments for a message', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          value: [
+            { name: 'report.pdf', contentType: 'application/pdf', size: 102400, isInline: false },
+            { name: 'logo.png', contentType: 'image/png', size: 2048, isInline: true },
+          ],
+        },
+      });
+
+      const result = await executeMail('test-token', {
+        message_id: 'AAMkAGI2',
+        attachments: true,
+      });
+
+      expect(result).toContain('report.pdf');
+      expect(result).toContain('application/pdf');
+      expect(result).toContain('logo.png');
+      expect(result).toContain('image/png');
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain('/attachments');
+    });
+
+    it('returns message when no attachments found', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      const result = await executeMail('test-token', {
+        message_id: 'AAMkAGI2',
+        attachments: true,
+      });
+
+      expect(result).toBe('No attachments found.');
+    });
+  });
+
+  describe('filter mode', () => {
+    it('filters unread messages', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      await executeMail('test-token', { filter: 'unread' });
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain('$filter=isRead eq false');
+    });
+
+    it('filters flagged messages', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      await executeMail('test-token', { filter: 'flagged' });
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain("$filter=flag/flagStatus eq 'flagged'");
+    });
+
+    it('filters messages with attachments', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      await executeMail('test-token', { filter: 'attachments' });
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain('$filter=hasAttachments eq true');
+    });
+
+    it('filters important messages', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      await executeMail('test-token', { filter: 'important' });
+
+      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(calledPath).toContain("$filter=importance eq 'high'");
+    });
+  });
+
+  describe('search with ConsistencyLevel header', () => {
+    it('passes ConsistencyLevel eventual header when searching', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      await executeMail('test-token', { search: 'quarterly report' });
+
+      expect(mockGraphFetch).toHaveBeenCalledWith(
+        expect.stringContaining('$search='),
+        'test-token',
+        { timezone: false, headers: { ConsistencyLevel: 'eventual' } },
+      );
     });
   });
 });
