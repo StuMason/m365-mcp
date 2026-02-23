@@ -129,7 +129,7 @@ export async function executeChat(
   }
 
   const path =
-    `/me/chats?$top=${count}&$orderby=lastMessagePreview/createdDateTime desc` +
+    `/me/chats?$top=${count}` +
     `&$expand=lastMessagePreview&$select=id,topic,chatType,lastMessagePreview`;
 
   const result = await graphFetch<ChatsResponse>(path, token, { timezone: false });

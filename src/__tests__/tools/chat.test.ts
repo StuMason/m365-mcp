@@ -238,6 +238,18 @@ describe('executeChat', () => {
     expect(result).not.toContain('<at');
   });
 
+  it('does not include $orderby in chat list URL', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeChat('test-token', {});
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).not.toContain('$orderby');
+  });
+
   it('handles emoji tags in messages', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,
