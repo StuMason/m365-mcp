@@ -68,7 +68,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     let result: string;
     switch (name) {
       case 'ms_profile':
-        result = await executeProfile(token);
+        result = await executeProfile(
+          token,
+          args as {
+            include?: string[];
+          },
+        );
         break;
       case 'ms_calendar':
         result = await executeCalendar(
