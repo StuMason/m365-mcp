@@ -82,6 +82,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             date?: string;
             start?: string;
             end?: string;
+            event_id?: string;
+            calendars?: boolean;
           },
         );
         break;

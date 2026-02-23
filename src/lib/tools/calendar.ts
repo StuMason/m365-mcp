@@ -3,13 +3,15 @@ import { graphFetch } from '../graph.js';
 export const calendarToolDefinition = {
   name: 'ms_calendar',
   description:
-    "Fetch the user's Microsoft 365 calendar events. Defaults to today if no date params given.",
+    "Fetch the user's Microsoft 365 calendar events. Defaults to today if no date params given. Can also list calendars or drill down into a specific event.",
   inputSchema: {
     type: 'object' as const,
     properties: {
       date: { type: 'string', description: 'Fetch events for a specific date (YYYY-MM-DD)' },
       start: { type: 'string', description: 'Start of date range (ISO 8601)' },
       end: { type: 'string', description: 'End of date range (ISO 8601)' },
+      event_id: { type: 'string', description: 'Event ID for full detail drill-down' },
+      calendars: { type: 'boolean', description: 'List all calendars' },
     },
   },
 };
@@ -29,6 +31,37 @@ interface CalendarEvent {
 
 interface CalendarViewResponse {
   value: CalendarEvent[];
+}
+
+interface CalendarInfo {
+  name?: string;
+  color?: string;
+  isDefaultCalendar?: boolean;
+  canEdit?: boolean;
+}
+
+interface CalendarsResponse {
+  value: CalendarInfo[];
+}
+
+interface EventDetail {
+  subject?: string;
+  start?: { dateTime?: string; timeZone?: string };
+  end?: { dateTime?: string; timeZone?: string };
+  organizer?: { emailAddress?: { name?: string; address?: string } };
+  attendees?: Array<{
+    emailAddress?: { name?: string; address?: string };
+    status?: { response?: string };
+  }>;
+  body?: { contentType?: string; content?: string };
+  bodyPreview?: string;
+  location?: { displayName?: string };
+  onlineMeeting?: { joinUrl?: string } | null;
+  hasAttachments?: boolean;
+  showAs?: string;
+  importance?: string;
+  recurrence?: unknown;
+  categories?: string[];
 }
 
 /**
@@ -78,7 +111,7 @@ function stripHtml(html: string): string {
 const MAX_BODY_LENGTH = 500;
 
 /**
- * Formats a calendar event into readable multi-line text.
+ * Formats a calendar event into readable multi-line text (summary view).
  */
 function formatEvent(event: CalendarEvent): string {
   const lines: string[] = [];
@@ -125,13 +158,130 @@ function formatEvent(event: CalendarEvent): string {
 }
 
 /**
- * Fetches calendar events for the specified date range and returns
- * a human-readable summary.
+ * Formats a calendar info object into readable text.
+ */
+function formatCalendar(cal: CalendarInfo): string {
+  const defaultMarker = cal.isDefaultCalendar ? ' (default)' : '';
+  const lines: string[] = [];
+  lines.push(`## ${cal.name || 'Unnamed'}${defaultMarker}`);
+  lines.push(`Color: ${cal.color || 'none'} | Can edit: ${cal.canEdit ? 'Yes' : 'No'}`);
+  return lines.join('\n');
+}
+
+/**
+ * Formats a full event detail into readable text (no body truncation).
+ */
+function formatEventDetail(event: EventDetail): string {
+  const lines: string[] = [];
+
+  lines.push(`## ${event.subject || 'Untitled'}`);
+
+  const startTime = event.start?.dateTime || 'N/A';
+  const endTime = event.end?.dateTime || 'N/A';
+  lines.push(`Time: ${startTime} - ${endTime}`);
+
+  if (event.location?.displayName) {
+    lines.push(`Location: ${event.location.displayName}`);
+  }
+
+  if (event.organizer?.emailAddress) {
+    const name = event.organizer.emailAddress.name || 'Unknown';
+    const email = event.organizer.emailAddress.address;
+    lines.push(`Organizer: ${name}${email ? ` (${email})` : ''}`);
+  }
+
+  if (event.attendees && event.attendees.length > 0) {
+    const formatted = event.attendees
+      .map((a) => {
+        const name = a.emailAddress?.name || a.emailAddress?.address || 'Unknown';
+        const response = a.status?.response || 'none';
+        return `${name} (${response})`;
+      })
+      .join(', ');
+    lines.push(`Attendees: ${formatted}`);
+  }
+
+  if (event.body?.content) {
+    const text =
+      event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
+    if (text) {
+      lines.push(`\n${text}`);
+    }
+  }
+
+  if (event.onlineMeeting?.joinUrl) {
+    lines.push(`Teams: ${event.onlineMeeting.joinUrl}`);
+  }
+
+  if (event.categories && event.categories.length > 0) {
+    lines.push(`Categories: ${event.categories.join(', ')}`);
+  }
+
+  if (event.importance) {
+    lines.push(`Importance: ${event.importance}`);
+  }
+
+  if (event.showAs) {
+    lines.push(`Show as: ${event.showAs}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Fetches calendar events, lists calendars, or shows event detail.
  */
 export async function executeCalendar(
   token: string,
-  args: { date?: string; start?: string; end?: string },
+  args: { date?: string; start?: string; end?: string; event_id?: string; calendars?: boolean },
 ): Promise<string> {
+  // Mode 1: List calendars
+  if (args.calendars) {
+    const path = '/me/calendars?$select=name,color,isDefaultCalendar,canEdit&$top=50';
+    const result = await graphFetch<CalendarsResponse>(path, token);
+
+    if (!result.ok) {
+      return `Error: ${result.error.message}`;
+    }
+
+    const calendars = result.data.value;
+    if (!calendars || calendars.length === 0) {
+      return 'No calendars found.';
+    }
+
+    return calendars.map(formatCalendar).join('\n\n');
+  }
+
+  // Mode 2: Event detail
+  if (args.event_id) {
+    const select = [
+      'subject',
+      'start',
+      'end',
+      'organizer',
+      'attendees',
+      'body',
+      'bodyPreview',
+      'location',
+      'onlineMeeting',
+      'hasAttachments',
+      'showAs',
+      'importance',
+      'recurrence',
+      'categories',
+    ].join(',');
+
+    const path = `/me/events/${args.event_id}?$select=${select}`;
+    const result = await graphFetch<EventDetail>(path, token);
+
+    if (!result.ok) {
+      return `Error: ${result.error.message}`;
+    }
+
+    return formatEventDetail(result.data);
+  }
+
+  // Mode 3: Calendar view (existing behavior)
   let start: string;
   let end: string;
 
