@@ -238,6 +238,76 @@ describe('executeChat', () => {
     expect(result).not.toContain('<at');
   });
 
+  it('lists chat members when chat_id and members are provided', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            displayName: 'Alice Smith',
+            email: 'alice@example.com',
+            roles: ['owner'],
+          },
+          {
+            displayName: 'Bob Jones',
+            email: 'bob@example.com',
+            roles: ['guest'],
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    expect(result).toContain('## Chat Members');
+    expect(result).toContain('Alice Smith');
+    expect(result).toContain('alice@example.com');
+    expect(result).toContain('owner');
+    expect(result).toContain('Bob Jones');
+    expect(result).toContain('bob@example.com');
+    expect(result).toContain('guest');
+  });
+
+  it('does not include $select in members URL', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).toContain('/me/chats/chat-123/members');
+    expect(calledPath).not.toContain('$select');
+  });
+
+  it('handles empty members list', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    expect(result).toBe('No members found in this chat.');
+  });
+
+  it('handles error fetching members', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: {
+        status: 403,
+        message: 'Insufficient permissions. Check granted scopes with ms_auth_status.',
+      },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    expect(result).toBe(
+      'Error: Insufficient permissions. Check granted scopes with ms_auth_status.',
+    );
+  });
+
   it('does not include $orderby in chat list URL', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,

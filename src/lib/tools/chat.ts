@@ -9,6 +9,10 @@ export const chatToolDefinition = {
     properties: {
       chat_id: { type: 'string', description: 'Specific chat thread ID to read messages from' },
       count: { type: 'integer', description: 'Number of chats/messages (1-25, default 10)' },
+      members: {
+        type: 'boolean',
+        description: 'When used with chat_id, list chat members instead of messages',
+      },
     },
   },
 };
@@ -42,6 +46,16 @@ interface Chat {
 
 interface ChatsResponse {
   value: Chat[];
+}
+
+interface ChatMember {
+  displayName?: string;
+  email?: string;
+  roles?: string[];
+}
+
+interface ChatMembersResponse {
+  value: ChatMember[];
 }
 
 /**
@@ -106,9 +120,35 @@ function formatChatListing(chat: Chat): string {
  */
 export async function executeChat(
   token: string,
-  args: { chat_id?: string; count?: number },
+  args: { chat_id?: string; count?: number; members?: boolean },
 ): Promise<string> {
   const count = Math.min(Math.max(args.count ?? 10, 1), 25);
+
+  if (args.chat_id && args.members) {
+    const chatId = encodeURIComponent(args.chat_id);
+    const path = `/me/chats/${chatId}/members`;
+
+    const result = await graphFetch<ChatMembersResponse>(path, token, { timezone: false });
+
+    if (!result.ok) {
+      return `Error: ${result.error.message}`;
+    }
+
+    const members = result.data.value;
+    if (!members || members.length === 0) {
+      return 'No members found in this chat.';
+    }
+
+    const lines = ['## Chat Members', ''];
+    for (const member of members) {
+      const name = member.displayName || 'Unknown';
+      const email = member.email ? ` (${member.email})` : '';
+      const roles = member.roles && member.roles.length > 0 ? ` — ${member.roles.join(', ')}` : '';
+      lines.push(`- ${name}${email}${roles}`);
+    }
+
+    return lines.join('\n');
+  }
 
   if (args.chat_id) {
     const chatId = encodeURIComponent(args.chat_id);
