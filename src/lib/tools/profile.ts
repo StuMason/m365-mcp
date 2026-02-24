@@ -114,7 +114,7 @@ async function fetchManager(token: string): Promise<string> {
     if (result.error.status === 403) {
       return 'Manager info not available (tenant policy)';
     }
-    return result.error.message;
+    return `Error fetching manager: ${result.error.message}`;
   }
 
   const m = result.data;
@@ -134,7 +134,7 @@ async function fetchReports(token: string): Promise<string> {
   );
 
   if (!result.ok) {
-    return result.error.message;
+    return `Error fetching reports: ${result.error.message}`;
   }
 
   const reports = result.data.value;
@@ -152,7 +152,7 @@ async function fetchGroups(token: string): Promise<string> {
   const result = await graphFetch<{ value: GroupMember[] }>('/me/memberOf?$top=50', token);
 
   if (!result.ok) {
-    return result.error.message;
+    return `Error fetching groups: ${result.error.message}`;
   }
 
   const groups = result.data.value;
@@ -170,7 +170,10 @@ async function fetchPhoto(token: string): Promise<string> {
   const result = await graphFetch<PhotoMetadata>('/me/photo', token);
 
   if (!result.ok) {
-    return 'No photo available';
+    if (result.error.status === 404) {
+      return 'No photo available';
+    }
+    return `Photo error: ${result.error.message}`;
   }
 
   const photo = result.data;
@@ -220,6 +223,11 @@ export async function executeProfile(
         sections.push(`\nPhoto: ${photoInfo}`);
         break;
       }
+      default:
+        sections.push(
+          `\nWarning: Unknown include option "${item}". Valid options: manager, reports, groups, photo`,
+        );
+        break;
     }
   }
 

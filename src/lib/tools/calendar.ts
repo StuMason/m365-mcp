@@ -271,7 +271,7 @@ export async function executeCalendar(
       'categories',
     ].join(',');
 
-    const path = `/me/events/${args.event_id}?$select=${select}`;
+    const path = `/me/events/${encodeURIComponent(args.event_id)}?$select=${select}`;
     const result = await graphFetch<EventDetail>(path, token);
 
     if (!result.ok) {

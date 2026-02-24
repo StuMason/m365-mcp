@@ -333,7 +333,7 @@ async function executeFolderMessages(
 ): Promise<string> {
   const count = Math.min(Math.max(countArg ?? 10, 1), 25);
   const select = 'id,subject,from,receivedDateTime,bodyPreview,isRead,importance,hasAttachments';
-  const path = `/me/mailFolders/${folder}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
+  const path = `/me/mailFolders/${encodeURIComponent(folder)}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
 

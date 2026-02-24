@@ -97,9 +97,13 @@ function formatItem(item: DriveItem): string {
  * Fetches detail for a single drive item by ID, including download URL if available.
  */
 async function executeFileDetail(token: string, itemId: string): Promise<string> {
-  const result = await graphFetch<DriveItemDetail>(`/me/drive/items/${itemId}`, token, {
-    timezone: false,
-  });
+  const result = await graphFetch<DriveItemDetail>(
+    `/me/drive/items/${encodeURIComponent(itemId)}`,
+    token,
+    {
+      timezone: false,
+    },
+  );
 
   if (!result.ok) {
     return `Error: ${result.error.message}`;

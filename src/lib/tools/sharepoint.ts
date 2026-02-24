@@ -131,7 +131,7 @@ export async function executeSharepoint(
 
   // Mode 1: List items from a specific list
   if (args.site_id && args.list_id) {
-    const path = `/sites/${args.site_id}/lists/${args.list_id}/items?$expand=fields&$top=${count}`;
+    const path = `/sites/${encodeURIComponent(args.site_id)}/lists/${encodeURIComponent(args.list_id)}/items?$expand=fields&$top=${count}`;
     const result = await graphFetch<ListItemsResponse>(path, token, { timezone: false });
 
     if (!result.ok) {
@@ -148,7 +148,7 @@ export async function executeSharepoint(
 
   // Mode 2: List lists for a specific site
   if (args.site_id) {
-    const path = `/sites/${args.site_id}/lists?$top=${count}&$select=displayName,name,description,webUrl,lastModifiedDateTime,list`;
+    const path = `/sites/${encodeURIComponent(args.site_id)}/lists?$top=${count}&$select=displayName,name,description,webUrl,lastModifiedDateTime,list`;
     const result = await graphFetch<SiteListsResponse>(path, token, { timezone: false });
 
     if (!result.ok) {
@@ -165,7 +165,7 @@ export async function executeSharepoint(
 
   // Mode 3: Search sites (default)
   const query = args.search || '*';
-  const path = `/sites?search=${query}&$top=${count}`;
+  const path = `/sites?search=${encodeURIComponent(query)}&$top=${count}`;
   const result = await graphFetch<SitesResponse>(path, token, { timezone: false });
 
   if (!result.ok) {

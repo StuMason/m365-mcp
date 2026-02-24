@@ -121,6 +121,10 @@ function formatScheduleItems(items: ScheduleItem[]): string[] {
  * Check people's free/busy availability via the Graph API getSchedule endpoint.
  */
 export async function executeSchedule(token: string, args: ScheduleArgs): Promise<string> {
+  if (!args.emails || args.emails.length === 0) {
+    return 'Error: At least one email address is required.';
+  }
+
   const date = args.date || todayDate();
   const start = args.start || '08:00';
   const end = args.end || '18:00';

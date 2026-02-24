@@ -49,8 +49,18 @@ function buildHeaders(token: string, options?: GraphFetchOptions): Record<string
  */
 async function handleResponse<T>(response: Response): Promise<GraphResult<T>> {
   if (response.ok) {
-    const data = (await response.json()) as T;
-    return { ok: true, data };
+    try {
+      const data = (await response.json()) as T;
+      return { ok: true, data };
+    } catch {
+      return {
+        ok: false,
+        error: {
+          status: response.status,
+          message: `Graph API returned status ${response.status} but the response body was not valid JSON.`,
+        },
+      };
+    }
   }
 
   const status = response.status;
@@ -67,7 +77,12 @@ async function handleResponse<T>(response: Response): Promise<GraphResult<T>> {
       message = 'Resource not found. The item may not exist or you may lack access.';
       break;
     default: {
-      const text = await response.text();
+      let text: string;
+      try {
+        text = await response.text();
+      } catch {
+        text = '(unable to read error response body)';
+      }
       message = `Graph API error (${status}): ${text}`;
       break;
     }
