@@ -244,4 +244,43 @@ describe('executeSharepoint', () => {
     expect(result).toContain('Tags: ["tag1","tag2"]');
     expect(result).not.toContain('[object Object]');
   });
+
+  it('filters out internal boilerplate fields from list items', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'item-1',
+            fields: {
+              Title: 'My Document',
+              Status: 'Published',
+              AuthorLookupId: '42',
+              EditorLookupId: '42',
+              ContentType: 'Document',
+              ItemChildCount: '0',
+              FolderChildCount: '0',
+              Attachments: false,
+              GUID: 'abc-123',
+              id: 'item-1',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeSharepoint('test-token', {
+      site_id: 'site-1',
+      list_id: 'list-1',
+    });
+
+    expect(result).toContain('Title: My Document');
+    expect(result).toContain('Status: Published');
+    expect(result).not.toContain('AuthorLookupId');
+    expect(result).not.toContain('EditorLookupId');
+    expect(result).not.toContain('ContentType');
+    expect(result).not.toContain('ItemChildCount');
+    expect(result).not.toContain('FolderChildCount');
+    expect(result).not.toContain('GUID');
+  });
 });

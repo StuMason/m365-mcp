@@ -106,8 +106,30 @@ function formatList(list: SiteList): string {
   return lines.join('\n');
 }
 
+const HIDDEN_FIELDS = new Set([
+  'AuthorLookupId',
+  'EditorLookupId',
+  'ContentType',
+  'ItemChildCount',
+  'FolderChildCount',
+  'Attachments',
+  'Edit',
+  'LinkTitleNoMenu',
+  'LinkTitle',
+  'DocIcon',
+  'FileSystemObjectType',
+  'ServerRedirectedEmbedUri',
+  'ServerRedirectedEmbedUrl',
+  'ComplianceAssetId',
+  'OData__ColorTag',
+  'OData__UIVersionString',
+  'GUID',
+  'id',
+]);
+
 /**
  * Formats a list item into readable text by iterating over its fields.
+ * Filters out internal/boilerplate fields.
  */
 function formatItem(item: ListItem): string {
   const lines: string[] = [];
@@ -117,6 +139,7 @@ function formatItem(item: ListItem): string {
   if (item.fields) {
     for (const [key, value] of Object.entries(item.fields)) {
       if (key.startsWith('@odata') || key.startsWith('_')) continue;
+      if (HIDDEN_FIELDS.has(key)) continue;
       const display =
         value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
       lines.push(`${key}: ${display}`);
