@@ -389,7 +389,7 @@ async function executeFiltered(token: string, filter: string, countArg?: number)
     return `Error: Unknown filter "${filter}". Valid filters: ${Object.keys(FILTER_MAP).join(', ')}`;
   }
 
-  const path = `/me/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}&$filter=${filterExpr}`;
+  const path = `/me/messages?$top=${count}&$select=${select}&$filter=${filterExpr}`;
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
 

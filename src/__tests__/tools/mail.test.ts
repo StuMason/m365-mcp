@@ -471,6 +471,7 @@ describe('executeMail', () => {
 
       const calledPath = mockGraphFetch.mock.calls[0][0] as string;
       expect(calledPath).toContain("$filter=flag/flagStatus eq 'flagged'");
+      expect(calledPath).not.toContain('$orderby');
     });
 
     it('filters messages with attachments', async () => {
