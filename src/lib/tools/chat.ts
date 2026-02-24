@@ -42,6 +42,7 @@ interface Chat {
   topic?: string;
   chatType?: string;
   lastMessagePreview?: LastMessagePreview;
+  members?: Array<{ displayName?: string }>;
 }
 
 interface ChatsResponse {
@@ -97,7 +98,15 @@ function formatChatMessage(msg: ChatMessage): string {
  */
 function formatChatListing(chat: Chat): string {
   const lines: string[] = [];
-  const topic = chat.topic || `${chat.chatType || 'chat'} chat`;
+  let topic = chat.topic;
+  if (!topic && chat.chatType === 'oneOnOne' && chat.members && chat.members.length > 0) {
+    const names = chat.members
+      .map((m) => m.displayName)
+      .filter(Boolean)
+      .join(', ');
+    topic = names || 'oneOnOne chat';
+  }
+  topic = topic || `${chat.chatType || 'chat'} chat`;
   lines.push(`## ${topic}`);
   lines.push(`Type: ${chat.chatType || 'unknown'}`);
 
@@ -170,7 +179,7 @@ export async function executeChat(
 
   const path =
     `/me/chats?$top=${count}` +
-    `&$expand=lastMessagePreview&$select=id,topic,chatType,lastMessagePreview`;
+    `&$expand=lastMessagePreview,members&$select=id,topic,chatType,lastMessagePreview,members`;
 
   const result = await graphFetch<ChatsResponse>(path, token, { timezone: false });
 

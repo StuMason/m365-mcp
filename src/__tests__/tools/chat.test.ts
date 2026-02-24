@@ -172,7 +172,7 @@ describe('executeChat', () => {
     );
   });
 
-  it('handles chat listing with no topic', async () => {
+  it('handles chat listing with no topic and no members', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,
       data: {
@@ -192,6 +192,32 @@ describe('executeChat', () => {
     expect(result).toContain('## oneOnOne chat');
     expect(result).toContain('Type: oneOnOne');
     expect(result).toContain('Chat ID: chat-456');
+  });
+
+  it('shows member names for oneOnOne chats without topic', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'chat-789',
+            topic: null,
+            chatType: 'oneOnOne',
+            members: [{ displayName: 'Alice' }, { displayName: 'Bob' }],
+            lastMessagePreview: {
+              body: { content: 'Hi there' },
+              createdDateTime: '2025-06-15T10:00:00Z',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', {});
+
+    expect(result).toContain('## Alice, Bob');
+    expect(result).toContain('Type: oneOnOne');
+    expect(result).not.toContain('oneOnOne chat');
   });
 
   it('handles messages with empty body', async () => {
