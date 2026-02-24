@@ -223,6 +223,38 @@ describe('graphFetch', () => {
     expect(callHeaders).toHaveProperty('ConsistencyLevel', 'eventual');
     expect(callHeaders).toHaveProperty('Authorization', 'Bearer test-token');
   });
+
+  it('returns error when success response has invalid JSON', async () => {
+    mockFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+    } as Partial<Response>);
+
+    const result = await graphFetch('/me', 'test-token');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.status).toBe(200);
+      expect(result.error.message).toContain('not valid JSON');
+    }
+  });
+
+  it('handles response.text() failure on error path', async () => {
+    mockFetch({
+      ok: false,
+      status: 500,
+      text: () => Promise.reject(new Error('stream error')),
+    } as Partial<Response>);
+
+    const result = await graphFetch('/me', 'test-token');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.status).toBe(500);
+      expect(result.error.message).toContain('unable to read error response body');
+    }
+  });
 });
 
 describe('graphPost', () => {

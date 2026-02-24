@@ -153,4 +153,38 @@ describe('executeSharepoint', () => {
       expect.any(Object),
     );
   });
+
+  it('handles empty lists for a site', async () => {
+    mockGraphFetch.mockResolvedValue({ ok: true, data: { value: [] } });
+
+    const result = await executeSharepoint('test-token', { site_id: 'site-1' });
+    expect(result).toBe('No lists found for this site.');
+  });
+
+  it('handles empty items for a list', async () => {
+    mockGraphFetch.mockResolvedValue({ ok: true, data: { value: [] } });
+
+    const result = await executeSharepoint('test-token', { site_id: 'site-1', list_id: 'list-1' });
+    expect(result).toBe('No items found in this list.');
+  });
+
+  it('handles error fetching site lists', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 403, message: 'Insufficient permissions.' },
+    });
+
+    const result = await executeSharepoint('test-token', { site_id: 'site-1' });
+    expect(result).toBe('Error: Insufficient permissions.');
+  });
+
+  it('handles error fetching list items', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 404, message: 'Resource not found.' },
+    });
+
+    const result = await executeSharepoint('test-token', { site_id: 'site-1', list_id: 'list-1' });
+    expect(result).toBe('Error: Resource not found.');
+  });
 });

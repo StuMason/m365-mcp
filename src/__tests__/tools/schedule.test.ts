@@ -152,4 +152,11 @@ describe('executeSchedule', () => {
       expect.any(Object),
     );
   });
+
+  it('returns error when emails is empty', async () => {
+    const result = await executeSchedule('test-token', { emails: [] });
+    expect(result).toContain('Error');
+    expect(result).toContain('email');
+    expect(mockGraphPost).not.toHaveBeenCalled();
+  });
 });

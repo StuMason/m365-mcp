@@ -345,4 +345,86 @@ describe('executeProfile', () => {
     expect(result).toMatch(/^Error:/);
     expect(result).toContain('Graph API error (500)');
   });
+
+  it('include: ["manager"] with non-403 error shows prefixed message', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: { displayName: 'Stuart', mail: 'stuart@example.com' },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: false,
+      error: { status: 500, message: 'Internal Server Error' },
+    });
+
+    const result = await executeProfile('test-token', { include: ['manager'] });
+    expect(result).toContain('Error fetching manager: Internal Server Error');
+    expect(result).toContain('Name: Stuart');
+  });
+
+  it('include: ["reports"] with error shows prefixed message', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: { displayName: 'Stuart', mail: 'stuart@example.com' },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: false,
+      error: { status: 500, message: 'Internal Server Error' },
+    });
+
+    const result = await executeProfile('test-token', { include: ['reports'] });
+    expect(result).toContain('Error fetching reports: Internal Server Error');
+  });
+
+  it('include: ["groups"] with error shows prefixed message', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: { displayName: 'Stuart', mail: 'stuart@example.com' },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: false,
+      error: { status: 500, message: 'Internal Server Error' },
+    });
+
+    const result = await executeProfile('test-token', { include: ['groups'] });
+    expect(result).toContain('Error fetching groups: Internal Server Error');
+  });
+
+  it('include: ["photo"] with non-404 error shows photo error message', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: { displayName: 'Stuart', mail: 'stuart@example.com' },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: false,
+      error: { status: 401, message: 'Graph token expired.' },
+    });
+
+    const result = await executeProfile('test-token', { include: ['photo'] });
+    expect(result).toContain('Photo error: Graph token expired.');
+  });
+
+  it('include: ["photo"] with 404 shows no photo available', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: { displayName: 'Stuart', mail: 'stuart@example.com' },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: false,
+      error: { status: 404, message: 'Resource not found.' },
+    });
+
+    const result = await executeProfile('test-token', { include: ['photo'] });
+    expect(result).toContain('Photo: No photo available');
+  });
+
+  it('warns about unknown include options', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: { displayName: 'Stuart', mail: 'stuart@example.com' },
+    });
+
+    const result = await executeProfile('test-token', { include: ['typo'] });
+    expect(result).toContain('Warning: Unknown include option "typo"');
+    expect(result).toContain('Valid options: manager, reports, groups, photo');
+  });
 });

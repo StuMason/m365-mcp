@@ -514,4 +514,42 @@ describe('executeMail', () => {
       );
     });
   });
+
+  it('returns error for unknown filter value', async () => {
+    const result = await executeMail('test-token', { filter: 'bogus' });
+    expect(result).toContain('Error: Unknown filter "bogus"');
+    expect(result).toContain('unread');
+    expect(result).toContain('flagged');
+    expect(mockGraphFetch).not.toHaveBeenCalled();
+  });
+
+  it('handles error fetching folders', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 403, message: 'Insufficient permissions.' },
+    });
+
+    const result = await executeMail('test-token', { folders: true });
+    expect(result).toBe('Error: Insufficient permissions.');
+  });
+
+  it('handles error fetching folder messages', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 404, message: 'Resource not found.' },
+    });
+
+    const result = await executeMail('test-token', { folder: 'NonExistent' });
+    expect(result).toBe('Error: Resource not found.');
+  });
+
+  it('handles error fetching attachments', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 404, message: 'Resource not found.' },
+    });
+
+    const result = await executeMail('test-token', { message_id: 'msg-1', attachments: true });
+    expect(result).toBe('Error: Resource not found.');
+  });
 });
