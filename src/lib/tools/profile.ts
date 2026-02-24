@@ -149,7 +149,10 @@ async function fetchReports(token: string): Promise<string> {
  * Fetch group memberships.
  */
 async function fetchGroups(token: string): Promise<string> {
-  const result = await graphFetch<{ value: GroupMember[] }>('/me/memberOf?$top=50', token);
+  const result = await graphFetch<{ value: GroupMember[] }>(
+    '/me/memberOf?$top=50&$select=displayName,mail,id',
+    token,
+  );
 
   if (!result.ok) {
     return `Error fetching groups: ${result.error.message}`;
