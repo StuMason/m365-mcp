@@ -69,6 +69,7 @@ interface MailMessageFull {
 }
 
 interface MailFolder {
+  id?: string;
   displayName?: string;
   unreadItemCount?: number;
   totalItemCount?: number;
@@ -301,7 +302,7 @@ export async function executeMail(
  * Lists all mail folders with unread and total item counts.
  */
 async function executeFolders(token: string): Promise<string> {
-  const path = '/me/mailFolders?$top=50&$select=displayName,unreadItemCount,totalItemCount';
+  const path = '/me/mailFolders?$top=50&$select=id,displayName,unreadItemCount,totalItemCount';
   const result = await graphFetch<MailFoldersResponse>(path, token, { timezone: false });
 
   if (!result.ok) {
@@ -318,22 +319,55 @@ async function executeFolders(token: string): Promise<string> {
       const name = f.displayName || 'Unknown Folder';
       const unread = f.unreadItemCount ?? 0;
       const total = f.totalItemCount ?? 0;
-      return `## ${name}\n${unread} unread / ${total} total`;
+      return `## ${name}\n${unread} unread / ${total} total\nFolder ID: ${f.id || 'N/A'}`;
     })
     .join('\n\n');
 }
 
 /**
- * Lists messages from a specific mail folder.
+ * Resolves a folder name to its ID via Graph API lookup.
+ * If the value already looks like a Graph ID (contains '='), returns it as-is.
+ */
+async function resolveFolderId(
+  token: string,
+  folderNameOrId: string,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  // Graph folder IDs are long base64 strings containing '=' padding
+  if (folderNameOrId.includes('=')) {
+    return { ok: true, id: folderNameOrId };
+  }
+
+  const path = `/me/mailFolders?$filter=displayName eq '${encodeURIComponent(folderNameOrId)}'&$select=id,displayName&$top=1`;
+  const result = await graphFetch<MailFoldersResponse>(path, token, { timezone: false });
+
+  if (!result.ok) {
+    return { ok: false, error: result.error.message };
+  }
+
+  const folders = result.data.value;
+  if (!folders || folders.length === 0) {
+    return { ok: false, error: `Folder "${folderNameOrId}" not found.` };
+  }
+
+  return { ok: true, id: folders[0].id || folderNameOrId };
+}
+
+/**
+ * Lists messages from a specific mail folder. Accepts folder name or ID.
  */
 async function executeFolderMessages(
   token: string,
   folder: string,
   countArg?: number,
 ): Promise<string> {
+  const resolved = await resolveFolderId(token, folder);
+  if (!resolved.ok) {
+    return `Error: ${resolved.error}`;
+  }
+
   const count = Math.min(Math.max(countArg ?? 10, 1), 25);
   const select = 'id,subject,from,receivedDateTime,bodyPreview,isRead,importance,hasAttachments';
-  const path = `/me/mailFolders/${encodeURIComponent(folder)}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
+  const path = `/me/mailFolders/${encodeURIComponent(resolved.id)}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
 

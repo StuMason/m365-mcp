@@ -17,6 +17,7 @@ export const calendarToolDefinition = {
 };
 
 interface CalendarEvent {
+  id?: string;
   subject?: string;
   start?: { dateTime?: string; timeZone?: string };
   end?: { dateTime?: string; timeZone?: string };
@@ -151,6 +152,10 @@ function formatEvent(event: CalendarEvent): string {
         text.length > MAX_BODY_LENGTH ? text.slice(0, MAX_BODY_LENGTH) + '...' : text;
       lines.push(truncated);
     }
+  }
+
+  if (event.id) {
+    lines.push(`Event ID: ${event.id}`);
   }
 
   return lines.join('\n');
@@ -298,6 +303,7 @@ export async function executeCalendar(
   }
 
   const select = [
+    'id',
     'subject',
     'start',
     'end',

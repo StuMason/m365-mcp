@@ -345,13 +345,23 @@ describe('executeMail', () => {
   });
 
   describe('folders mode', () => {
-    it('lists mail folders with unread counts', async () => {
+    it('lists mail folders with unread counts and IDs', async () => {
       mockGraphFetch.mockResolvedValue({
         ok: true,
         data: {
           value: [
-            { displayName: 'Inbox', unreadItemCount: 3, totalItemCount: 150 },
-            { displayName: 'Sent Items', unreadItemCount: 0, totalItemCount: 42 },
+            {
+              id: 'AAMkAGFo-inbox=',
+              displayName: 'Inbox',
+              unreadItemCount: 3,
+              totalItemCount: 150,
+            },
+            {
+              id: 'AAMkAGFo-sent=',
+              displayName: 'Sent Items',
+              unreadItemCount: 0,
+              totalItemCount: 42,
+            },
           ],
         },
       });
@@ -361,10 +371,13 @@ describe('executeMail', () => {
       expect(result).toContain('Inbox');
       expect(result).toContain('3 unread');
       expect(result).toContain('150 total');
+      expect(result).toContain('Folder ID: AAMkAGFo-inbox=');
       expect(result).toContain('Sent Items');
+      expect(result).toContain('Folder ID: AAMkAGFo-sent=');
 
       const calledPath = mockGraphFetch.mock.calls[0][0] as string;
       expect(calledPath).toContain('/me/mailFolders');
+      expect(calledPath).toContain('$select=id,displayName');
     });
 
     it('returns message when no folders found', async () => {
@@ -380,8 +393,16 @@ describe('executeMail', () => {
   });
 
   describe('folder messages mode', () => {
-    it('lists messages from a specific folder', async () => {
-      mockGraphFetch.mockResolvedValue({
+    it('resolves folder name to ID then lists messages', async () => {
+      // First call: resolve folder name
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [{ id: 'AAMkAGFo=', displayName: 'Inbox' }],
+        },
+      });
+      // Second call: fetch messages
+      mockGraphFetch.mockResolvedValueOnce({
         ok: true,
         data: {
           value: [
@@ -401,9 +422,49 @@ describe('executeMail', () => {
       const result = await executeMail('test-token', { folder: 'Inbox' });
 
       expect(result).toContain('## Folder Email');
+      // First call is the folder resolution
+      const resolvePath = mockGraphFetch.mock.calls[0][0] as string;
+      expect(resolvePath).toContain("displayName eq 'Inbox'");
+      // Second call uses the resolved ID
+      const messagesPath = mockGraphFetch.mock.calls[1][0] as string;
+      expect(messagesPath).toContain('/me/mailFolders/AAMkAGFo%3D/messages');
+    });
 
+    it('skips resolution when folder looks like an ID', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          value: [
+            {
+              id: 'msg-1',
+              subject: 'Sent Email',
+              from: { emailAddress: { name: 'Me', address: 'me@example.com' } },
+              receivedDateTime: '2025-06-15T10:00:00Z',
+              bodyPreview: 'Preview',
+              isRead: true,
+              importance: 'normal',
+            },
+          ],
+        },
+      });
+
+      await executeMail('test-token', { folder: 'AAMkAGFo=' });
+
+      // Only one call — no resolution needed
+      expect(mockGraphFetch).toHaveBeenCalledTimes(1);
       const calledPath = mockGraphFetch.mock.calls[0][0] as string;
-      expect(calledPath).toContain('/me/mailFolders/Inbox/messages');
+      expect(calledPath).toContain('/me/mailFolders/AAMkAGFo%3D/messages');
+    });
+
+    it('returns error when folder name not found', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: { value: [] },
+      });
+
+      const result = await executeMail('test-token', { folder: 'Nonexistent' });
+
+      expect(result).toBe('Error: Folder "Nonexistent" not found.');
     });
   });
 

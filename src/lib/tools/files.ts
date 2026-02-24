@@ -19,6 +19,7 @@ export const filesToolDefinition = {
 };
 
 interface BaseDriveItem {
+  id?: string;
   name?: string;
   size?: number;
   lastModifiedDateTime?: string;
@@ -79,6 +80,9 @@ function formatItem(item: DriveItem): string {
   const lines = [`${icon} ${name}`, `  Size: ${size}  Modified: ${modified}`];
   if (url) {
     lines.push(`  URL: ${url}`);
+  }
+  if (item.id) {
+    lines.push(`  ID: ${item.id}`);
   }
   return lines.join('\n');
 }
@@ -191,7 +195,7 @@ export async function executeFiles(
   }
 
   const count = Math.min(Math.max(args.count ?? 20, 1), 50);
-  const select = 'name,size,lastModifiedDateTime,webUrl,file,folder';
+  const select = 'id,name,size,lastModifiedDateTime,webUrl,file,folder';
 
   let path: string;
 
