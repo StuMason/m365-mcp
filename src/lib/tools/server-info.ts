@@ -20,6 +20,8 @@ const TOOL_NAMES = [
   'ms_chat',
   'ms_files',
   'ms_transcripts',
+  'ms_schedule',
+  'ms_sharepoint',
   'ms_server_info',
 ];
 
