@@ -60,7 +60,6 @@ interface EventDetail {
   hasAttachments?: boolean;
   showAs?: string;
   importance?: string;
-  recurrence?: unknown;
   categories?: string[];
 }
 
@@ -267,7 +266,6 @@ export async function executeCalendar(
       'hasAttachments',
       'showAs',
       'importance',
-      'recurrence',
       'categories',
     ].join(',');
 

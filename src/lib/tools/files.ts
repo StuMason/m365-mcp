@@ -18,7 +18,7 @@ export const filesToolDefinition = {
   },
 };
 
-interface DriveItem {
+interface BaseDriveItem {
   name?: string;
   size?: number;
   lastModifiedDateTime?: string;
@@ -26,28 +26,18 @@ interface DriveItem {
   file?: Record<string, unknown>;
   folder?: { childCount?: number };
 }
+
+type DriveItem = BaseDriveItem;
 
 interface DriveResponse {
   value: DriveItem[];
 }
 
-interface DriveItemDetail {
-  name?: string;
-  size?: number;
-  lastModifiedDateTime?: string;
-  webUrl?: string;
+interface DriveItemDetail extends BaseDriveItem {
   '@microsoft.graph.downloadUrl'?: string;
-  file?: Record<string, unknown>;
-  folder?: { childCount?: number };
 }
 
-interface SharedDriveItem {
-  name?: string;
-  size?: number;
-  lastModifiedDateTime?: string;
-  webUrl?: string;
-  file?: Record<string, unknown>;
-  folder?: { childCount?: number };
+interface SharedDriveItem extends BaseDriveItem {
   remoteItem?: {
     shared?: {
       sharedBy?: { user?: { displayName?: string } };

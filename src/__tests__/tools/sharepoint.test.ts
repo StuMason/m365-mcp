@@ -187,4 +187,61 @@ describe('executeSharepoint', () => {
     const result = await executeSharepoint('test-token', { site_id: 'site-1', list_id: 'list-1' });
     expect(result).toBe('Error: Resource not found.');
   });
+
+  it('filters @odata and _ prefixed fields from list items', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'item-1',
+            fields: {
+              '@odata.etag': '"abc123"',
+              _UIVersionString: '1.0',
+              Title: 'Visible Field',
+              Status: 'Active',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeSharepoint('test-token', {
+      site_id: 'site-1',
+      list_id: 'list-1',
+    });
+
+    expect(result).toContain('Title: Visible Field');
+    expect(result).toContain('Status: Active');
+    expect(result).not.toContain('@odata.etag');
+    expect(result).not.toContain('_UIVersionString');
+  });
+
+  it('handles non-primitive field values with JSON.stringify', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'item-1',
+            fields: {
+              Title: 'Report',
+              Metadata: { key: 'value' },
+              Tags: ['tag1', 'tag2'],
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeSharepoint('test-token', {
+      site_id: 'site-1',
+      list_id: 'list-1',
+    });
+
+    expect(result).toContain('Title: Report');
+    expect(result).toContain('Metadata: {"key":"value"}');
+    expect(result).toContain('Tags: ["tag1","tag2"]');
+    expect(result).not.toContain('[object Object]');
+  });
 });

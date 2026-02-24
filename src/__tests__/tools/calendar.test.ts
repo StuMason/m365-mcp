@@ -312,6 +312,17 @@ describe('executeCalendar', () => {
 
       expect(result).toBe('No calendars found.');
     });
+
+    it('handles error when listing calendars', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: false,
+        error: { status: 403, message: 'Insufficient permissions.' },
+      });
+
+      const result = await executeCalendar('test-token', { calendars: true });
+
+      expect(result).toBe('Error: Insufficient permissions.');
+    });
   });
 
   describe('event detail mode', () => {

@@ -155,8 +155,65 @@ describe('executeSchedule', () => {
 
   it('returns error when emails is empty', async () => {
     const result = await executeSchedule('test-token', { emails: [] });
-    expect(result).toContain('Error');
-    expect(result).toContain('email');
+    expect(result).toBe('Error: At least one email address is required.');
     expect(mockGraphPost).not.toHaveBeenCalled();
+  });
+
+  it('returns message when API returns empty value array', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['user@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toBe('No schedule data returned.');
+  });
+
+  it('handles error with exact error message', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: false,
+      error: { status: 403, message: 'Insufficient permissions.' },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['user@example.com'],
+    });
+
+    expect(result).toBe('Error: Insufficient permissions.');
+  });
+
+  it('formats schedule items with missing fields gracefully', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            scheduleId: 'user@example.com',
+            availabilityView: '02',
+            scheduleItems: [
+              {
+                subject: undefined,
+                start: undefined,
+                end: undefined,
+                status: undefined,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['user@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toContain('Untitled');
+    expect(result).toContain('? to ?');
+    expect(result).toContain('[unknown]');
   });
 });

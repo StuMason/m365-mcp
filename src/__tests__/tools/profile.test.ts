@@ -274,6 +274,27 @@ describe('executeProfile', () => {
     expect(result).toContain('648');
   });
 
+  it('include: ["photo"] without dimensions — shows photo available without size', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        displayName: 'Stuart Mason',
+        mail: 'stuart@example.com',
+      },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        '@odata.mediaContentType': 'image/jpeg',
+      },
+    });
+
+    const result = await executeProfile('test-token', { include: ['photo'] });
+
+    expect(result).toContain('Photo: Photo available');
+    expect(result).not.toMatch(/\d+x\d+/);
+  });
+
   it('include: ["photo"] when no photo — shows not available', async () => {
     mockGraphFetch.mockResolvedValueOnce({
       ok: true,

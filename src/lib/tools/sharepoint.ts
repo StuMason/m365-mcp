@@ -113,7 +113,9 @@ function formatItem(item: ListItem): string {
   if (item.fields) {
     for (const [key, value] of Object.entries(item.fields)) {
       if (key.startsWith('@odata') || key.startsWith('_')) continue;
-      lines.push(`${key}: ${value}`);
+      const display =
+        value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+      lines.push(`${key}: ${display}`);
     }
   }
   return lines.join('\n');
