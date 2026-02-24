@@ -68,6 +68,7 @@ describe('executeSharepoint', () => {
       data: {
         value: [
           {
+            id: 'list-abc',
             displayName: 'Documents',
             name: 'documents',
             description: 'Shared documents',
@@ -82,6 +83,7 @@ describe('executeSharepoint', () => {
     const result = await executeSharepoint('test-token', { site_id: 'site-1' });
 
     expect(result).toContain('Documents');
+    expect(result).toContain('List ID: list-abc');
     expect(result).toContain('documentLibrary');
     expect(mockGraphFetch).toHaveBeenCalledWith(
       expect.stringContaining('/sites/site-1/lists'),

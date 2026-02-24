@@ -456,6 +456,44 @@ describe('executeMail', () => {
       expect(calledPath).toContain('/me/mailFolders/AAMkAGFo%3D/messages');
     });
 
+    it('returns error when folder resolves but messages fetch fails', async () => {
+      // First call: resolve folder name succeeds
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [{ id: 'AAMkAGFo=', displayName: 'Inbox' }],
+        },
+      });
+      // Second call: fetch messages fails
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: false,
+        error: { status: 500, message: 'Internal Server Error' },
+      });
+
+      const result = await executeMail('test-token', { folder: 'Inbox' });
+
+      expect(result).toBe('Error: Internal Server Error');
+    });
+
+    it('returns empty message when folder resolves but has no messages', async () => {
+      // First call: resolve folder name succeeds
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: {
+          value: [{ id: 'AAMkAGFo=', displayName: 'Archive' }],
+        },
+      });
+      // Second call: fetch messages returns empty
+      mockGraphFetch.mockResolvedValueOnce({
+        ok: true,
+        data: { value: [] },
+      });
+
+      const result = await executeMail('test-token', { folder: 'Archive' });
+
+      expect(result).toBe('No emails found.');
+    });
+
     it('returns error when folder name not found', async () => {
       mockGraphFetch.mockResolvedValue({
         ok: true,
@@ -492,6 +530,29 @@ describe('executeMail', () => {
 
       const calledPath = mockGraphFetch.mock.calls[0][0] as string;
       expect(calledPath).toContain('/attachments');
+    });
+
+    it('formats attachment size in MB for large files', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          value: [
+            {
+              name: 'large-video.mp4',
+              contentType: 'video/mp4',
+              size: 5242880,
+              isInline: false,
+            },
+          ],
+        },
+      });
+
+      const result = await executeMail('test-token', {
+        message_id: 'AAMkAGI2',
+        attachments: true,
+      });
+
+      expect(result).toContain('5.0 MB');
     });
 
     it('returns message when no attachments found', async () => {
@@ -560,6 +621,43 @@ describe('executeMail', () => {
     });
   });
 
+  describe('search error path', () => {
+    it('returns error when search graph call fails', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: false,
+        error: { status: 500, message: 'Internal Server Error' },
+      });
+
+      const result = await executeMail('test-token', { search: 'quarterly report' });
+
+      expect(result).toBe('Error: Internal Server Error');
+    });
+
+    it('returns search results formatted as messages', async () => {
+      mockGraphFetch.mockResolvedValue({
+        ok: true,
+        data: {
+          value: [
+            {
+              id: 'msg-search-1',
+              subject: 'Quarterly Report',
+              from: { emailAddress: { name: 'Alice', address: 'alice@example.com' } },
+              receivedDateTime: '2025-06-15T10:00:00Z',
+              bodyPreview: 'The quarterly results are in.',
+              isRead: true,
+              importance: 'normal',
+            },
+          ],
+        },
+      });
+
+      const result = await executeMail('test-token', { search: 'quarterly' });
+
+      expect(result).toContain('## Quarterly Report');
+      expect(result).toContain('Message ID: msg-search-1');
+    });
+  });
+
   describe('search with ConsistencyLevel header', () => {
     it('passes ConsistencyLevel eventual header when searching', async () => {
       mockGraphFetch.mockResolvedValue({
@@ -575,6 +673,28 @@ describe('executeMail', () => {
         { timezone: false, headers: { ConsistencyLevel: 'eventual' } },
       );
     });
+  });
+
+  it('returns error when filter graph call fails', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 500, message: 'Internal Server Error' },
+    });
+
+    const result = await executeMail('test-token', { filter: 'unread' });
+
+    expect(result).toBe('Error: Internal Server Error');
+  });
+
+  it('returns empty message when filter returns no results', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    const result = await executeMail('test-token', { filter: 'flagged' });
+
+    expect(result).toBe('No emails found.');
   });
 
   it('returns error for unknown filter value', async () => {

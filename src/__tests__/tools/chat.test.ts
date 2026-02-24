@@ -220,6 +220,74 @@ describe('executeChat', () => {
     expect(result).not.toContain('oneOnOne chat');
   });
 
+  it('handles messages with missing from and createdDateTime', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            from: undefined,
+            createdDateTime: undefined,
+            body: { content: 'System message', contentType: 'text' },
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123' });
+
+    expect(result).toContain('**Unknown**');
+    expect(result).toContain('(N/A)');
+    expect(result).toContain('System message');
+  });
+
+  it('falls back to oneOnOne chat when all member displayNames are undefined', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'chat-nonames',
+            topic: null,
+            chatType: 'oneOnOne',
+            members: [{ displayName: undefined }, { displayName: undefined }],
+            lastMessagePreview: null,
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', {});
+
+    expect(result).toContain('## oneOnOne chat');
+  });
+
+  it('handles lastMessagePreview with null body content and null createdDateTime', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'chat-preview',
+            topic: 'Preview Test',
+            chatType: 'group',
+            lastMessagePreview: {
+              body: { content: null },
+              createdDateTime: null,
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', {});
+
+    expect(result).toContain('## Preview Test');
+    expect(result).toContain('(no preview)');
+    // No timestamp in the last message line since createdDateTime is null
+    expect(result).toContain('Last message: (no preview)');
+  });
+
   it('handles messages with empty body', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,

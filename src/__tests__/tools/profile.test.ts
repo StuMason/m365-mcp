@@ -223,6 +223,26 @@ describe('executeProfile', () => {
     expect(result).toContain('No direct reports');
   });
 
+  it('include: ["groups"] empty — shows no group memberships', async () => {
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        displayName: 'Stuart Mason',
+        mail: 'stuart@example.com',
+      },
+    });
+    mockGraphFetch.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        value: [],
+      },
+    });
+
+    const result = await executeProfile('test-token', { include: ['groups'] });
+
+    expect(result).toContain('No group memberships');
+  });
+
   it('include: ["groups"] with null displayName — uses fallback chain', async () => {
     mockGraphFetch.mockResolvedValueOnce({
       ok: true,

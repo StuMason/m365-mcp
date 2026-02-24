@@ -59,6 +59,38 @@ describe('executeFiles', () => {
     );
   });
 
+  it('includes item ID when file items have id field', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'file-id-001',
+            name: 'notes.txt',
+            size: 1024,
+            lastModifiedDateTime: '2025-06-15T10:00:00Z',
+            file: { mimeType: 'text/plain' },
+          },
+        ],
+      },
+    });
+
+    const result = await executeFiles('test-token', {});
+
+    expect(result).toContain('ID: file-id-001');
+  });
+
+  it('handles shared files error', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: { status: 403, message: 'Access denied.' },
+    });
+
+    const result = await executeFiles('test-token', { shared: true });
+
+    expect(result).toBe('Error: Access denied.');
+  });
+
   it('handles path param', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,

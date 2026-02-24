@@ -217,6 +217,52 @@ describe('executeSchedule', () => {
     expect(result).toContain('[unknown]');
   });
 
+  it('maps unknown availability chars to unknown', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            scheduleId: 'user@example.com',
+            availabilityView: '059',
+            scheduleItems: [],
+          },
+        ],
+      },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['user@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toContain('free');
+    expect(result).toMatch(/unknown/);
+  });
+
+  it('handles per-user error with no message or responseCode', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            scheduleId: 'broken@example.com',
+            error: {},
+          },
+        ],
+      },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['broken@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toContain('broken@example.com');
+    expect(result).toContain('Unable to retrieve schedule');
+    expect(result).toContain('unknown error');
+  });
+
   it('handles per-user error for non-existent email', async () => {
     mockGraphPost.mockResolvedValue({
       ok: true,

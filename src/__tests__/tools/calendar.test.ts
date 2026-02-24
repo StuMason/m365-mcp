@@ -163,6 +163,27 @@ describe('executeCalendar', () => {
     );
   });
 
+  it('includes Event ID when event has id field', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'event-abc123',
+            subject: 'ID Test',
+            isAllDay: false,
+            start: { dateTime: '2025-01-15T09:00:00' },
+            end: { dateTime: '2025-01-15T10:00:00' },
+          },
+        ],
+      },
+    });
+
+    const result = await executeCalendar('test-token', { date: '2025-01-15' });
+
+    expect(result).toContain('Event ID: event-abc123');
+  });
+
   it('handles events with minimal fields', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,
