@@ -216,4 +216,84 @@ describe('executeSchedule', () => {
     expect(result).toContain('? to ?');
     expect(result).toContain('[unknown]');
   });
+
+  it('handles per-user error for non-existent email', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            scheduleId: 'fake@example.com',
+            error: {
+              responseCode: 'ErrorMailRecipientNotFound',
+              message: 'The specified recipient was not found.',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['fake@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toContain('fake@example.com');
+    expect(result).toContain('Unable to retrieve schedule');
+    expect(result).toContain('The specified recipient was not found.');
+    expect(result).not.toContain('Availability:');
+  });
+
+  it('handles mixed valid and error entries', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            scheduleId: 'alice@example.com',
+            availabilityView: '0022',
+            scheduleItems: [],
+          },
+          {
+            scheduleId: 'fake@example.com',
+            error: {
+              responseCode: 'ErrorMailRecipientNotFound',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['alice@example.com', 'fake@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toContain('alice@example.com');
+    expect(result).toContain('free');
+    expect(result).toContain('fake@example.com');
+    expect(result).toContain('Unable to retrieve schedule');
+  });
+
+  it('handles undefined scheduleItems without crashing', async () => {
+    mockGraphPost.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            scheduleId: 'user@example.com',
+            availabilityView: '00',
+          },
+        ],
+      },
+    });
+
+    const result = await executeSchedule('test-token', {
+      emails: ['user@example.com'],
+      date: '2026-02-23',
+    });
+
+    expect(result).toContain('user@example.com');
+    expect(result).toContain('free');
+  });
 });

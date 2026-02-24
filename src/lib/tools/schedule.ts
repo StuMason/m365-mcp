@@ -50,8 +50,9 @@ interface ScheduleItem {
 
 interface ScheduleEntry {
   scheduleId: string;
-  availabilityView: string;
-  scheduleItems: ScheduleItem[];
+  availabilityView?: string;
+  scheduleItems?: ScheduleItem[];
+  error?: { responseCode?: string; message?: string };
 }
 
 interface ScheduleResponse {
@@ -103,8 +104,8 @@ function decodeAvailabilityView(
 /**
  * Formats schedule items (meetings) into readable lines.
  */
-function formatScheduleItems(items: ScheduleItem[]): string[] {
-  if (items.length === 0) return [];
+function formatScheduleItems(items?: ScheduleItem[]): string[] {
+  if (!items || items.length === 0) return [];
 
   const lines: string[] = ['', 'Scheduled items:'];
   for (const item of items) {
@@ -158,6 +159,15 @@ export async function executeSchedule(token: string, args: ScheduleArgs): Promis
   for (const entry of entries) {
     const lines: string[] = [];
     lines.push(`## ${entry.scheduleId}`);
+
+    if (entry.error) {
+      lines.push(
+        `Error: Unable to retrieve schedule — ${entry.error.message || entry.error.responseCode || 'unknown error'}`,
+      );
+      sections.push(lines.join('\n'));
+      continue;
+    }
+
     lines.push(`Date: ${date} | ${start} - ${end} (${interval}-min slots)`);
     lines.push('');
 
