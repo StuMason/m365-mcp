@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { graphFetch } from '../lib/graph.js';
+import { graphFetch, graphPost } from '../lib/graph.js';
 
 // Save original fetch
 const originalFetch = globalThis.fetch;
@@ -206,5 +206,126 @@ describe('graphFetch', () => {
         message: 'Network error: string error',
       },
     });
+  });
+
+  it('merges custom headers into request', async () => {
+    const mock = mockFetch({
+      ok: true,
+      json: () => Promise.resolve({ value: [] }),
+    } as Partial<Response>);
+
+    await graphFetch('/me/messages', 'test-token', {
+      timezone: false,
+      headers: { ConsistencyLevel: 'eventual' },
+    });
+
+    const callHeaders = mock.mock.calls[0][1]!.headers as Record<string, string>;
+    expect(callHeaders).toHaveProperty('ConsistencyLevel', 'eventual');
+    expect(callHeaders).toHaveProperty('Authorization', 'Bearer test-token');
+  });
+
+  it('returns error when success response has invalid JSON', async () => {
+    mockFetch({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+    } as Partial<Response>);
+
+    const result = await graphFetch('/me', 'test-token');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.status).toBe(200);
+      expect(result.error.message).toContain('not valid JSON');
+    }
+  });
+
+  it('handles response.text() failure on error path', async () => {
+    mockFetch({
+      ok: false,
+      status: 500,
+      text: () => Promise.reject(new Error('stream error')),
+    } as Partial<Response>);
+
+    const result = await graphFetch('/me', 'test-token');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.status).toBe(500);
+      expect(result.error.message).toContain('unable to read error response body');
+    }
+  });
+});
+
+describe('graphPost', () => {
+  it('sends POST request with JSON body', async () => {
+    const mock = mockFetch({
+      ok: true,
+      json: () => Promise.resolve({ value: [{ scheduleId: 'user@example.com' }] }),
+    } as Partial<Response>);
+
+    const result = await graphPost<{ schedules: string[] }, { value: unknown[] }>(
+      '/me/calendar/getSchedule',
+      'test-token',
+      { schedules: ['user@example.com'] },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: { value: [{ scheduleId: 'user@example.com' }] },
+    });
+    expect(mock).toHaveBeenCalledWith(
+      'https://graph.microsoft.com/v1.0/me/calendar/getSchedule',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ schedules: ['user@example.com'] }),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    );
+  });
+
+  it('returns error on failed POST', async () => {
+    mockFetch({ ok: false, status: 403 } as Partial<Response>);
+    const result = await graphPost('/me/calendar/getSchedule', 'test-token', {});
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        status: 403,
+        message: 'Insufficient permissions. Check granted scopes with ms_auth_status.',
+      },
+    });
+  });
+
+  it('handles network error on POST', async () => {
+    globalThis.fetch = jest.fn<typeof fetch>().mockRejectedValue(new Error('Network failure'));
+    const result = await graphPost('/me/calendar/getSchedule', 'test-token', {});
+    expect(result).toEqual({
+      ok: false,
+      error: { status: 0, message: 'Network error: Network failure' },
+    });
+  });
+
+  it('uses beta URL when beta option is true', async () => {
+    const mock = mockFetch({ ok: true, json: () => Promise.resolve({}) } as Partial<Response>);
+    await graphPost('/me/calendar/getSchedule', 'test-token', {}, { beta: true });
+    expect(mock).toHaveBeenCalledWith(
+      'https://graph.microsoft.com/beta/me/calendar/getSchedule',
+      expect.any(Object),
+    );
+  });
+
+  it('merges custom headers into POST request', async () => {
+    const mock = mockFetch({ ok: true, json: () => Promise.resolve({}) } as Partial<Response>);
+    await graphPost(
+      '/test',
+      'test-token',
+      {},
+      { timezone: false, headers: { 'X-Custom': 'value' } },
+    );
+    const callHeaders = mock.mock.calls[0][1]!.headers as Record<string, string>;
+    expect(callHeaders).toHaveProperty('X-Custom', 'value');
   });
 });

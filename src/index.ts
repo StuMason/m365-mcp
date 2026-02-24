@@ -12,6 +12,8 @@ import { chatToolDefinition, executeChat } from './lib/tools/chat.js';
 import { filesToolDefinition, executeFiles } from './lib/tools/files.js';
 import { transcriptsToolDefinition, executeTranscripts } from './lib/tools/transcripts.js';
 import { serverInfoToolDefinition, executeServerInfo } from './lib/tools/server-info.js';
+import { scheduleToolDefinition, executeSchedule } from './lib/tools/schedule.js';
+import { sharepointToolDefinition, executeSharepoint } from './lib/tools/sharepoint.js';
 
 // Validate env vars at startup
 try {
@@ -30,7 +32,7 @@ try {
   process.exit(1);
 }
 
-const server = new Server({ name: 'm365-mcp', version: '0.6.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'm365-mcp', version: '0.7.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -41,6 +43,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     chatToolDefinition,
     filesToolDefinition,
     transcriptsToolDefinition,
+    scheduleToolDefinition,
+    sharepointToolDefinition,
     serverInfoToolDefinition,
   ],
 }));
@@ -68,7 +72,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     let result: string;
     switch (name) {
       case 'ms_profile':
-        result = await executeProfile(token);
+        result = await executeProfile(
+          token,
+          args as {
+            include?: string[];
+          },
+        );
         break;
       case 'ms_calendar':
         result = await executeCalendar(
@@ -77,6 +86,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             date?: string;
             start?: string;
             end?: string;
+            event_id?: string;
+            calendars?: boolean;
           },
         );
         break;
@@ -87,6 +98,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             search?: string;
             count?: number;
             message_id?: string;
+            folder?: string;
+            folders?: boolean;
+            attachments?: boolean;
+            filter?: string;
           },
         );
         break;
@@ -96,6 +111,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args as {
             chat_id?: string;
             count?: number;
+            members?: boolean;
           },
         );
         break;
@@ -106,6 +122,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             path?: string;
             search?: string;
             count?: number;
+            item_id?: string;
+            shared?: boolean;
           },
         );
         break;
@@ -119,6 +137,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             transcript_id?: string;
             offset?: number;
             length?: number;
+          },
+        );
+        break;
+      case 'ms_schedule':
+        result = await executeSchedule(
+          token,
+          args as {
+            emails: string[];
+            date?: string;
+            start?: string;
+            end?: string;
+            interval?: number;
+          },
+        );
+        break;
+      case 'ms_sharepoint':
+        result = await executeSharepoint(
+          token,
+          args as {
+            search?: string;
+            site_id?: string;
+            list_id?: string;
+            count?: number;
           },
         );
         break;
