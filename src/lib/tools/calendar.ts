@@ -108,6 +108,20 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/**
+ * Strips Teams meeting boilerplate from event body text.
+ * Teams invites include join links, dial-in numbers, passcodes, etc.
+ * after a line of underscores that adds no value in summaries.
+ */
+function stripTeamsBoilerplate(text: string): string {
+  // Match the Teams divider: a line of underscores (typically 4+)
+  const dividerIndex = text.search(/_{4,}/);
+  if (dividerIndex > 0) {
+    return text.slice(0, dividerIndex).trim();
+  }
+  return text;
+}
+
 const MAX_BODY_LENGTH = 500;
 
 /**
@@ -145,8 +159,9 @@ function formatEvent(event: CalendarEvent): string {
   }
 
   if (event.body?.content) {
-    const text =
+    let text =
       event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
+    text = stripTeamsBoilerplate(text);
     if (text) {
       const truncated =
         text.length > MAX_BODY_LENGTH ? text.slice(0, MAX_BODY_LENGTH) + '...' : text;

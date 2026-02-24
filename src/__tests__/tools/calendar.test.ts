@@ -264,6 +264,40 @@ describe('executeCalendar', () => {
     expect(result).toContain('A'.repeat(500) + '...');
   });
 
+  it('strips Teams meeting boilerplate from event body', async () => {
+    const teamsBody =
+      'Sprint planning session\n\n' +
+      '________________________________________________________________________________\n' +
+      'Microsoft Teams meeting\n' +
+      'Join on your computer, mobile app or room device\n' +
+      'Click here to join the meeting\n' +
+      'Meeting ID: 123 456 789\n' +
+      'Passcode: abc123\n' +
+      'Dial in: +1 555-0100';
+
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            subject: 'Teams Meeting',
+            isAllDay: false,
+            start: { dateTime: '2025-01-15T09:00:00' },
+            end: { dateTime: '2025-01-15T10:00:00' },
+            body: { contentType: 'text', content: teamsBody },
+          },
+        ],
+      },
+    });
+
+    const result = await executeCalendar('test-token', { date: '2025-01-15' });
+
+    expect(result).toContain('Sprint planning session');
+    expect(result).not.toContain('Microsoft Teams meeting');
+    expect(result).not.toContain('Passcode');
+    expect(result).not.toContain('Dial in');
+  });
+
   it('requests body field in $select', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,
