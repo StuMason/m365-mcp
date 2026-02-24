@@ -172,7 +172,7 @@ describe('executeChat', () => {
     );
   });
 
-  it('handles chat listing with no topic', async () => {
+  it('handles chat listing with no topic and no members', async () => {
     mockGraphFetch.mockResolvedValue({
       ok: true,
       data: {
@@ -192,6 +192,100 @@ describe('executeChat', () => {
     expect(result).toContain('## oneOnOne chat');
     expect(result).toContain('Type: oneOnOne');
     expect(result).toContain('Chat ID: chat-456');
+  });
+
+  it('shows member names for oneOnOne chats without topic', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'chat-789',
+            topic: null,
+            chatType: 'oneOnOne',
+            members: [{ displayName: 'Alice' }, { displayName: 'Bob' }],
+            lastMessagePreview: {
+              body: { content: 'Hi there' },
+              createdDateTime: '2025-06-15T10:00:00Z',
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', {});
+
+    expect(result).toContain('## Alice, Bob');
+    expect(result).toContain('Type: oneOnOne');
+    expect(result).not.toContain('oneOnOne chat');
+  });
+
+  it('handles messages with missing from and createdDateTime', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            from: undefined,
+            createdDateTime: undefined,
+            body: { content: 'System message', contentType: 'text' },
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123' });
+
+    expect(result).toContain('**Unknown**');
+    expect(result).toContain('(N/A)');
+    expect(result).toContain('System message');
+  });
+
+  it('falls back to oneOnOne chat when all member displayNames are undefined', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'chat-nonames',
+            topic: null,
+            chatType: 'oneOnOne',
+            members: [{ displayName: undefined }, { displayName: undefined }],
+            lastMessagePreview: null,
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', {});
+
+    expect(result).toContain('## oneOnOne chat');
+  });
+
+  it('handles lastMessagePreview with null body content and null createdDateTime', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            id: 'chat-preview',
+            topic: 'Preview Test',
+            chatType: 'group',
+            lastMessagePreview: {
+              body: { content: null },
+              createdDateTime: null,
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', {});
+
+    expect(result).toContain('## Preview Test');
+    expect(result).toContain('(no preview)');
+    // No timestamp in the last message line since createdDateTime is null
+    expect(result).toContain('Last message: (no preview)');
   });
 
   it('handles messages with empty body', async () => {
@@ -236,6 +330,88 @@ describe('executeChat', () => {
     expect(result).toContain('Hey Stuart, check this out');
     expect(result).not.toContain('<p>');
     expect(result).not.toContain('<at');
+  });
+
+  it('lists chat members when chat_id and members are provided', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: {
+        value: [
+          {
+            displayName: 'Alice Smith',
+            email: 'alice@example.com',
+            roles: ['owner'],
+          },
+          {
+            displayName: 'Bob Jones',
+            email: 'bob@example.com',
+            roles: ['guest'],
+          },
+        ],
+      },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    expect(result).toContain('## Chat Members');
+    expect(result).toContain('Alice Smith');
+    expect(result).toContain('alice@example.com');
+    expect(result).toContain('owner');
+    expect(result).toContain('Bob Jones');
+    expect(result).toContain('bob@example.com');
+    expect(result).toContain('guest');
+  });
+
+  it('does not include $select in members URL', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).toContain('/me/chats/chat-123/members');
+    expect(calledPath).not.toContain('$select');
+  });
+
+  it('handles empty members list', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    expect(result).toBe('No members found in this chat.');
+  });
+
+  it('handles error fetching members', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: false,
+      error: {
+        status: 403,
+        message: 'Insufficient permissions. Check granted scopes with ms_auth_status.',
+      },
+    });
+
+    const result = await executeChat('test-token', { chat_id: 'chat-123', members: true });
+
+    expect(result).toBe(
+      'Error: Insufficient permissions. Check granted scopes with ms_auth_status.',
+    );
+  });
+
+  it('does not include $orderby in chat list URL', async () => {
+    mockGraphFetch.mockResolvedValue({
+      ok: true,
+      data: { value: [] },
+    });
+
+    await executeChat('test-token', {});
+
+    const calledPath = mockGraphFetch.mock.calls[0][0] as string;
+    expect(calledPath).not.toContain('$orderby');
   });
 
   it('handles emoji tags in messages', async () => {
