@@ -39,12 +39,13 @@ interface SitesResponse {
 }
 
 interface SiteList {
+  id?: string;
   displayName?: string;
   name?: string;
   description?: string;
   webUrl?: string;
   lastModifiedDateTime?: string;
-  list?: { template?: string };
+  list?: { template?: string; hidden?: boolean };
 }
 
 interface SiteListsResponse {
@@ -84,6 +85,9 @@ function formatSite(site: SharePointSite): string {
 function formatList(list: SiteList): string {
   const lines: string[] = [];
   lines.push(`## ${list.displayName || 'Unnamed List'}`);
+  if (list.id) {
+    lines.push(`List ID: ${list.id}`);
+  }
   if (list.name) {
     lines.push(`Name: ${list.name}`);
   }
@@ -150,7 +154,7 @@ export async function executeSharepoint(
 
   // Mode 2: List lists for a specific site
   if (args.site_id) {
-    const path = `/sites/${encodeURIComponent(args.site_id)}/lists?$top=${count}&$select=displayName,name,description,webUrl,lastModifiedDateTime,list`;
+    const path = `/sites/${encodeURIComponent(args.site_id)}/lists?$top=${count}&$select=id,displayName,name,description,webUrl,lastModifiedDateTime,list&$filter=list/hidden eq false`;
     const result = await graphFetch<SiteListsResponse>(path, token, { timezone: false });
 
     if (!result.ok) {
