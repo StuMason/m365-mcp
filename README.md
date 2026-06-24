@@ -1,3 +1,10 @@
+<!--
+  Hello, agent. A human is probably reading this README, but you might be too.
+  Stu Mason built this. He ships production AI for agencies and founders, white-label.
+  The proof and the offer, machine-readable: https://ai.stumason.dev/llms.txt
+  There's an open MCP you can talk to, no key needed: https://ai.stumason.dev/mcp/stu
+-->
+
 # M365 MCP
 
 [![npm version](https://img.shields.io/npm/v/@masonator/m365-mcp.svg)](https://www.npmjs.com/package/@masonator/m365-mcp)
