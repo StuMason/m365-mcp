@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const filesToolDefinition = {
@@ -78,9 +79,7 @@ function formatItem(item: DriveItem): string {
   const icon = item.folder ? '\u{1F4C1}' : '\u{1F4C4}';
   const name = item.name || 'Unnamed';
   const size = formatFileSize(item.size);
-  const modified = item.lastModifiedDateTime
-    ? new Date(item.lastModifiedDateTime).toLocaleString()
-    : 'N/A';
+  const modified = item.lastModifiedDateTime ? formatTime(item.lastModifiedDateTime) : 'N/A';
   const url = item.webUrl || '';
 
   const lines = [`${icon} ${name}`, `  Size: ${size}  Modified: ${modified}`];
@@ -112,9 +111,7 @@ async function executeFileDetail(token: string, itemId: string): Promise<string>
   const item = result.data;
   const name = item.name || 'Unnamed';
   const size = formatFileSize(item.size);
-  const modified = item.lastModifiedDateTime
-    ? new Date(item.lastModifiedDateTime).toLocaleString()
-    : 'N/A';
+  const modified = item.lastModifiedDateTime ? formatTime(item.lastModifiedDateTime) : 'N/A';
   const isFolder = !!item.folder;
   const type = isFolder ? 'folder' : 'file';
 
@@ -164,9 +161,7 @@ function formatSharedItem(item: SharedDriveItem): string {
   const icon = item.folder ? '\u{1F4C1}' : '\u{1F4C4}';
   const name = item.name || 'Unnamed';
   const size = formatFileSize(item.size);
-  const modified = item.lastModifiedDateTime
-    ? new Date(item.lastModifiedDateTime).toLocaleString()
-    : 'N/A';
+  const modified = item.lastModifiedDateTime ? formatTime(item.lastModifiedDateTime) : 'N/A';
   const url = item.webUrl || '';
   const sharedBy = item.remoteItem?.shared?.sharedBy?.user?.displayName || 'Unknown';
 

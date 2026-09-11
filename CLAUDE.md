@@ -26,6 +26,7 @@ src/
 ├── lib/
 │   ├── auth.ts           # OAuth2 confidential client, token storage, refresh
 │   ├── version.ts        # single source of truth for the version (package.json)
+│   ├── format.ts        # shared timestamp/truncation/untrusted-content formatting
 │   ├── graph.ts          # graphFetch() wrapper with error mapping
 │   └── tools/
 │       ├── index.ts        # TOOL_DEFINITIONS — the single source of truth for the roster
@@ -45,7 +46,7 @@ src/
 │       ├── brief.ts        # ms_brief — composes the tools above, no Graph calls
 │       ├── server-info.ts  # ms_server_info — version + registered tools
 │       └── transcripts.ts  # ms_transcripts — calendar → meeting ID → VTT
-└── __tests__/            # Jest tests (393 tests, ~95% coverage)
+└── __tests__/            # Jest tests (410 tests, ~96% coverage)
 ```
 
 ### Auth Flow
@@ -85,6 +86,20 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
   `execute*` function. Keep it that way: formatting and error handling belong with
   the area they came from. A failing section degrades to a note rather than taking
   the brief down.
+- **All output formatting goes through `lib/format.ts`.** `formatTime` for every
+  timestamp (never `toLocaleString()` — it produced US dates for a European user),
+  `truncate` for every cut, `untrusted()` for anything a third party wrote. Graph
+  returns two timestamp shapes and they need opposite handling: with
+  `Prefer: outlook.timezone` set, calendar/transcript times are bare wall-clock
+  already in our zone and must NOT be converted again; everything else is absolute.
+- **Dependent parameters are zod `.refine()` on the tool schema**, not runtime `if`s,
+  so the SDK rejects before the handler and the message is spec-shaped. Any new
+  parameter that requires another needs one.
+- **Dates must be round-tripped, not just shape-checked.** JS rolls `2026-02-30`
+  forward to `2026-03-02` rather than rejecting it, which silently returns the
+  wrong day.
+- **`ms_schedule` must send the configured timezone**, not `UTC`. It takes
+  wall-clock times; labelling them UTC shifted every query by the offset.
 - **Item insights are often disabled tenant-wide** (`trending` returns 403
   `ItemInsightsDisabled`). That is policy, not a fault, so `ms_insights` explains it
   instead of surfacing a raw error.

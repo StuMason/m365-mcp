@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime, untrusted } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const mailToolDefinition = {
@@ -10,29 +11,34 @@ export const mailToolDefinition = {
     'With message_id: returns the full email body. ' +
     'Use folders: true to list mail folders, folder to read from a specific folder, ' +
     'attachments with message_id to list attachments, or filter for quick filters.',
-  inputSchema: z.object({
-    search: z.string().optional().describe('Search keyword to filter emails (KQL)'),
-    count: z
-      .int()
-      .min(1)
-      .max(25)
-      .optional()
-      .describe('Number of emails to return (1-25, default 10)'),
-    message_id: z.string().optional().describe('Email message ID for full body drill-down'),
-    folder: z
-      .string()
-      .optional()
-      .describe('Folder name or ID to list messages from (e.g. "Inbox", "Sent Items")'),
-    folders: z.boolean().optional().describe('List all mail folders with unread counts'),
-    attachments: z
-      .boolean()
-      .optional()
-      .describe('When used with message_id, list attachments instead of body'),
-    filter: z
-      .string()
-      .optional()
-      .describe('Filter shortcut: "unread", "flagged", "attachments", "important"'),
-  }),
+  inputSchema: z
+    .object({
+      search: z.string().optional().describe('Search keyword to filter emails (KQL)'),
+      count: z
+        .int()
+        .min(1)
+        .max(25)
+        .optional()
+        .describe('Number of emails to return (1-25, default 10)'),
+      message_id: z.string().optional().describe('Email message ID for full body drill-down'),
+      folder: z
+        .string()
+        .optional()
+        .describe('Folder name or ID to list messages from (e.g. "Inbox", "Sent Items")'),
+      folders: z.boolean().optional().describe('List all mail folders with unread counts'),
+      attachments: z
+        .boolean()
+        .optional()
+        .describe('When used with message_id, list attachments instead of body'),
+      filter: z
+        .string()
+        .optional()
+        .describe('Filter shortcut: "unread", "flagged", "attachments", "important"'),
+    })
+    .refine((a) => !a.attachments || !!a.message_id, {
+      message: 'attachments requires message_id — pass the message to list attachments for.',
+      path: ['attachments'],
+    }),
   annotations: {
     title: 'Mail',
     readOnlyHint: true,
@@ -60,6 +66,22 @@ interface MailMessage {
 
 interface MailResponse {
   value: MailMessage[];
+  '@odata.count'?: number;
+}
+
+/**
+ * Prefixes a listing with "showing N of M" when the collection is larger than the
+ * page. Without it, "2 unread" reads as the whole inbox rather than the first two.
+ */
+function withTotal(messages: MailMessage[], total: number | undefined, scope: string): string {
+  const body = messages.map(formatMessage).join('\n\n');
+  // /me/messages spans every folder, not just the inbox — 1450 unread across the
+  // mailbox versus 25 in the inbox. Naming the scope keeps the number honest.
+  const head =
+    total !== undefined && total > messages.length
+      ? `Showing ${messages.length} of ${total} (${scope})`
+      : `${messages.length} message${messages.length === 1 ? '' : 's'} (${scope})`;
+  return `${head}\n\n${body}`;
 }
 
 interface MailMessageFull {
@@ -128,9 +150,7 @@ function stripHtml(html: string): string {
  * Formats a date string into a human-readable format.
  */
 function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return 'N/A';
-  const d = new Date(dateStr);
-  return d.toLocaleString();
+  return dateStr ? formatTime(dateStr) : 'N/A';
 }
 
 /**
@@ -168,7 +188,17 @@ function formatMessage(msg: MailMessage): string {
   lines.push(`Importance: ${msg.importance || 'normal'} | Read: ${msg.isRead ? 'Yes' : 'No'}`);
 
   if (msg.bodyPreview) {
-    lines.push(msg.bodyPreview);
+    // Graph truncates bodyPreview itself, mid-word and unmarked — "Fixed PDF
+    // download detectio" reads as the end of the message rather than a cut.
+    // Say it is a preview, and point at the drill-down that returns the whole body.
+    const preview = msg.bodyPreview.trim();
+    const clipped = preview.length >= 250;
+    lines.push(
+      untrusted(
+        `email from ${fromName}`,
+        clipped ? `${preview}… [preview truncated — use message_id for the full body]` : preview,
+      ),
+    );
   }
 
   if (msg.id) {
@@ -201,7 +231,9 @@ function formatFullMessage(msg: MailMessageFull): string {
   if (msg.body?.content) {
     const content =
       msg.body.contentType === 'html' ? stripHtml(msg.body.content) : msg.body.content;
-    lines.push(content);
+    lines.push(
+      untrusted(`email from ${msg.from?.emailAddress?.name || 'unknown sender'}`, content),
+    );
   } else {
     lines.push('(no body)');
   }
@@ -250,13 +282,13 @@ export async function executeMail(
   }
 
   // 4. List messages from a specific folder
-  if (args.folder) {
+  if (args.folder && !args.filter) {
     return executeFolderMessages(token, args.folder, args.count);
   }
 
   // 5. Filtered list
   if (args.filter) {
-    return executeFiltered(token, args.filter, args.count);
+    return executeFiltered(token, args.filter, args.count, args.folder);
   }
 
   const count = Math.min(Math.max(args.count ?? 10, 1), 25);
@@ -283,11 +315,11 @@ export async function executeMail(
       return 'No emails found.';
     }
 
-    return messages.map(formatMessage).join('\n\n');
+    return withTotal(messages, result.data['@odata.count'], 'search results, all folders');
   }
 
   // 7. Default — list recent messages
-  path = `/me/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
+  path = `/me/messages?$top=${count}&$count=true&$orderby=receivedDateTime desc&$select=${select}`;
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
 
@@ -300,7 +332,7 @@ export async function executeMail(
     return 'No emails found.';
   }
 
-  return messages.map(formatMessage).join('\n\n');
+  return withTotal(messages, result.data['@odata.count'], 'all folders');
 }
 
 /**
@@ -372,7 +404,7 @@ async function executeFolderMessages(
 
   const count = Math.min(Math.max(countArg ?? 10, 1), 25);
   const select = 'id,subject,from,receivedDateTime,bodyPreview,isRead,importance,hasAttachments';
-  const path = `/me/mailFolders/${encodeURIComponent(resolved.id)}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=${select}`;
+  const path = `/me/mailFolders/${encodeURIComponent(resolved.id)}/messages?$top=${count}&$count=true&$orderby=receivedDateTime desc&$select=${select}`;
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
 
@@ -385,7 +417,7 @@ async function executeFolderMessages(
     return 'No emails found.';
   }
 
-  return messages.map(formatMessage).join('\n\n');
+  return withTotal(messages, result.data['@odata.count'], folder);
 }
 
 /**
@@ -419,7 +451,12 @@ async function executeAttachments(token: string, messageId: string): Promise<str
 /**
  * Lists messages matching a filter shortcut.
  */
-async function executeFiltered(token: string, filter: string, countArg?: number): Promise<string> {
+async function executeFiltered(
+  token: string,
+  filter: string,
+  countArg?: number,
+  folder?: string,
+): Promise<string> {
   const count = Math.min(Math.max(countArg ?? 10, 1), 25);
   const select = 'id,subject,from,receivedDateTime,bodyPreview,isRead,importance';
   const filterExpr = FILTER_MAP[filter];
@@ -428,7 +465,18 @@ async function executeFiltered(token: string, filter: string, countArg?: number)
     return `Error: Unknown filter "${filter}". Valid filters: ${Object.keys(FILTER_MAP).join(', ')}`;
   }
 
-  const path = `/me/messages?$top=${count}&$select=${select}&$filter=${filterExpr}`;
+  let base = '/me/messages';
+  let scope = 'all folders';
+  if (folder) {
+    const resolved = await resolveFolderId(token, folder);
+    if (!resolved.ok) {
+      return `Error: ${resolved.error}`;
+    }
+    base = `/me/mailFolders/${encodeURIComponent(resolved.id)}/messages`;
+    scope = folder;
+  }
+
+  const path = `${base}?$top=${count}&$count=true&$select=${select}&$filter=${filterExpr}`;
 
   const result = await graphFetch<MailResponse>(path, token, { timezone: false });
 
@@ -441,7 +489,7 @@ async function executeFiltered(token: string, filter: string, countArg?: number)
     return 'No emails found.';
   }
 
-  return messages.map(formatMessage).join('\n\n');
+  return withTotal(messages, result.data['@odata.count'], `${filter} in ${scope}`);
 }
 
 /**

@@ -70,7 +70,13 @@ describe('executeBrief', () => {
   it('asks for unread mail and assigned Planner tasks', async () => {
     await executeBrief('test-token', { date: '2026-09-11', count: 4 });
 
-    expect(mockMail).toHaveBeenCalledWith('test-token', { filter: 'unread', count: 4 });
+    // Scoped to the Inbox: /me/messages spans Archive and Deleted Items, which
+    // reported ~1450 unread where the inbox held 25.
+    expect(mockMail).toHaveBeenCalledWith('test-token', {
+      filter: 'unread',
+      folder: 'Inbox',
+      count: 4,
+    });
     expect(mockTasks).toHaveBeenCalledWith('test-token', { planner: true, count: 4 });
   });
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const insightsToolDefinition = {
@@ -64,15 +65,13 @@ function formatInsight(insight: Insight): string {
 
   const accessed = insight.lastUsed?.lastAccessedDateTime;
   if (accessed) {
-    lines.push(`Last opened: ${new Date(accessed).toLocaleString()}`);
+    lines.push(`Last opened: ${formatTime(accessed)}`);
   }
 
   const shared = insight.lastShared;
   if (shared?.sharedDateTime) {
     const by = shared.sharedBy?.displayName;
-    lines.push(
-      `Shared${by ? ` by ${by}` : ''}: ${new Date(shared.sharedDateTime).toLocaleString()}`,
-    );
+    lines.push(`Shared${by ? ` by ${by}` : ''}: ${formatTime(shared.sharedDateTime)}`);
   }
   if (shared?.sharingSubject) {
     lines.push(`Context: ${shared.sharingSubject}`);
