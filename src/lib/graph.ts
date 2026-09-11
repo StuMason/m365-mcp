@@ -59,7 +59,25 @@ const ERROR_HINTS: Array<[RegExp, string]> = [
     'Microsoft Graph is throttling requests — try again shortly.',
   ],
   [/MailboxNotEnabled|ErrorNonExistentMailbox/i, 'That user has no mailbox.'],
+  [/recipient was not found|RecipientNotFound/i, 'That mailbox could not be found.'],
 ];
+
+/**
+ * Maps an error string to the caller-facing hint, or null if unrecognised.
+ *
+ * Separate from sanitiseGraphError because not every Graph error arrives as an
+ * HTTP failure: getSchedule returns 200 with per-mailbox errors inside the body,
+ * which bypassed the HTTP path entirely and leaked an Autodiscover exception
+ * complete with EWS endpoint, backend server name and diagnostic LID.
+ */
+export function sanitiseErrorText(text: string): string | null {
+  for (const [pattern, hint] of ERROR_HINTS) {
+    if (pattern.test(text)) {
+      return hint;
+    }
+  }
+  return null;
+}
 
 /**
  * Turns a raw Graph error body into something safe and useful.
@@ -70,10 +88,9 @@ const ERROR_HINTS: Array<[RegExp, string]> = [
  * body goes to stderr and the caller gets the intent.
  */
 export function sanitiseGraphError(status: number, body: string): string {
-  for (const [pattern, hint] of ERROR_HINTS) {
-    if (pattern.test(body)) {
-      return `${hint} (Graph error ${status})`;
-    }
+  const hint = sanitiseErrorText(body);
+  if (hint) {
+    return `${hint} (Graph error ${status})`;
   }
 
   // Unrecognised: surface the code only, never the surrounding prose.

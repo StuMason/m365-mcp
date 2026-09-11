@@ -305,7 +305,7 @@ describe('executeChat', () => {
 
     const result = await executeChat('test-token', { chat_id: 'chat-123' });
 
-    expect(result).toContain('(empty message)');
+    expect(result).toContain('[no text content]');
   });
 
   it('strips HTML from chat listing preview', async () => {

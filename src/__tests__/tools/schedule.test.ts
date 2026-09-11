@@ -13,6 +13,12 @@ const mockGraphPost =
 
 jest.unstable_mockModule('../../lib/graph.js', () => ({
   graphPost: mockGraphPost,
+  // Real implementation: the point of the per-mailbox path is that it
+  // sanitises, so stubbing it away would hide the bug it was added for.
+  sanitiseErrorText: (t: string): string | null =>
+    /AutoDiscover|InfoWorker|recipient was not found/i.test(t)
+      ? 'That mailbox could not be found.'
+      : null,
 }));
 
 const { executeSchedule } = await import('../../lib/tools/schedule.js');
@@ -260,7 +266,7 @@ describe('executeSchedule', () => {
 
     expect(result).toContain('broken@example.com');
     expect(result).toContain('Unable to retrieve schedule');
-    expect(result).toContain('unknown error');
+    expect(result).toContain('the mailbox could not be read.');
   });
 
   it('handles per-user error for non-existent email', async () => {
@@ -286,7 +292,10 @@ describe('executeSchedule', () => {
 
     expect(result).toContain('fake@example.com');
     expect(result).toContain('Unable to retrieve schedule');
-    expect(result).toContain('The specified recipient was not found.');
+    // The raw Graph text is replaced: an unknown address used to return an
+    // Autodiscover exception carrying the EWS endpoint, backend server name and
+    // a diagnostic LID.
+    expect(result).toContain('That mailbox could not be found.');
     expect(result).not.toContain('Availability:');
   });
 

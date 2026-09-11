@@ -115,7 +115,10 @@ describe('executeBrief', () => {
 
     const result = await executeBrief('test-token', {});
 
-    expect(result).toContain('…trimmed. Use the underlying tool for the full list.');
+    expect(result).toContain('…trimmed to fit the brief.');
+    // The count in a section header describes the full result, so the trim marker
+    // must say so rather than leaving the two contradicting each other.
+    expect(result).toContain('describes the full result');
     expect(result.length).toBeLessThan(5000);
   });
 

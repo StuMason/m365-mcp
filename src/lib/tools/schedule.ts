@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { graphPost } from '../graph.js';
+import { graphPost, sanitiseErrorText } from '../graph.js';
 import { formatTime, timezone } from '../format.js';
 
 export const scheduleToolDefinition = {
@@ -172,8 +172,17 @@ export async function executeSchedule(token: string, args: ScheduleArgs): Promis
     lines.push(`## ${entry.scheduleId}`);
 
     if (entry.error) {
+      // getSchedule reports per-mailbox failures inside a 200 response, so these
+      // never reach the HTTP error path. Unsanitised, an unknown address returned
+      // an Autodiscover exception with the EWS endpoint, the backend server name
+      // and a diagnostic LID.
+      const raw = entry.error.message || entry.error.responseCode || '';
+      const safe = sanitiseErrorText(raw);
+      if (!safe && raw) {
+        process.stderr.write(`getSchedule error for ${entry.scheduleId}: ${raw}\n`);
+      }
       lines.push(
-        `Error: Unable to retrieve schedule — ${entry.error.message || entry.error.responseCode || 'unknown error'}`,
+        `Error: Unable to retrieve schedule — ${safe ?? 'the mailbox could not be read.'}`,
       );
       sections.push(lines.join('\n'));
       continue;
