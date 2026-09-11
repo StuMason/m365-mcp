@@ -44,7 +44,7 @@ describe('executeCalendar', () => {
     const result = await executeCalendar('test-token', { date: '2025-01-15' });
 
     expect(result).toContain('## Standup');
-    expect(result).toContain('Time: 2025-01-15T09:00:00 - 2025-01-15T09:30:00');
+    expect(result).toContain('Time: 2025-01-15 09:00 GMT - 2025-01-15 09:30 GMT');
     expect(result).toContain('Location: Room A');
     expect(result).toContain('Organizer: Alice');
     expect(result).toContain('Attendees: Bob, Charlie');
@@ -202,7 +202,7 @@ describe('executeCalendar', () => {
     const result = await executeCalendar('test-token', { date: '2025-01-15' });
 
     expect(result).toContain('## Untitled');
-    expect(result).toContain('Time: N/A - N/A');
+    expect(result).toContain('Time: unknown - unknown');
   });
 
   it('formats multiple events separated by blank lines', async () => {
@@ -282,7 +282,8 @@ describe('executeCalendar', () => {
     const result = await executeCalendar('test-token', { date: '2025-01-15' });
 
     expect(result).not.toContain('A'.repeat(800));
-    expect(result).toContain('A'.repeat(500) + '...');
+    // No word boundary in a run of As, so it cuts at the cap and marks the cut.
+    expect(result).toContain('A'.repeat(500) + '… [truncated, 300 more characters]');
   });
 
   it('strips Teams meeting boilerplate from event body', async () => {
@@ -416,7 +417,7 @@ describe('executeCalendar', () => {
       const result = await executeCalendar('test-token', { event_id: 'event-123' });
 
       expect(result).toContain('## Sprint Planning');
-      expect(result).toContain('Time: 2025-01-15T09:00:00 - 2025-01-15T10:00:00');
+      expect(result).toContain('Time: 2025-01-15 09:00 GMT - 2025-01-15 10:00 GMT');
       expect(result).toContain('Location: Conference Room B');
       expect(result).toContain('Organizer: Alice (alice@example.com)');
       expect(result).toContain('Bob (accepted)');

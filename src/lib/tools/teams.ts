@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime, untrusted } from '../format.js';
 import { graphFetch } from '../graph.js';
 import { stripHtml } from './chat.js';
 
@@ -7,23 +8,32 @@ export const teamsToolDefinition = {
   title: 'Teams & Channels',
   description:
     'Browse Microsoft Teams the user has joined. Without parameters lists joined teams; with team_id lists that team’s channels; with team_id + channel_id returns recent channel messages. Distinct from ms_chat, which covers private/group chats rather than team channels.',
-  inputSchema: z.object({
-    team_id: z
-      .string()
-      .optional()
-      .describe('Team ID to list its channels, or combined with channel_id to read messages'),
-    channel_id: z
-      .string()
-      .optional()
-      .describe('Channel ID (requires team_id) to read recent messages from that channel'),
-    message_id: z
-      .string()
-      .optional()
-      .describe(
-        'Message ID (requires team_id + channel_id) to read the replies on that message thread',
-      ),
-    count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 20)'),
-  }),
+  inputSchema: z
+    .object({
+      team_id: z
+        .string()
+        .optional()
+        .describe('Team ID to list its channels, or combined with channel_id to read messages'),
+      channel_id: z
+        .string()
+        .optional()
+        .describe('Channel ID (requires team_id) to read recent messages from that channel'),
+      message_id: z
+        .string()
+        .optional()
+        .describe(
+          'Message ID (requires team_id + channel_id) to read the replies on that message thread',
+        ),
+      count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 20)'),
+    })
+    .refine((a) => !a.channel_id || !!a.team_id, {
+      message: 'channel_id requires team_id — pass the team the channel belongs to.',
+      path: ['channel_id'],
+    })
+    .refine((a) => !a.message_id || (!!a.team_id && !!a.channel_id), {
+      message: 'message_id requires both team_id and channel_id.',
+      path: ['message_id'],
+    }),
   annotations: {
     title: 'Teams & Channels',
     readOnlyHint: true,
@@ -118,9 +128,7 @@ function formatChannel(channel: Channel): string {
 function formatChannelMessage(message: ChannelMessage): string {
   const lines: string[] = [];
   const author = message.from?.user?.displayName || 'Unknown';
-  const when = message.createdDateTime
-    ? new Date(message.createdDateTime).toLocaleString()
-    : 'Unknown date';
+  const when = message.createdDateTime ? formatTime(message.createdDateTime) : 'Unknown date';
   lines.push(`## ${message.subject || author}`);
   lines.push(`From: ${author}`);
   lines.push(`Date: ${when}`);
@@ -130,7 +138,7 @@ function formatChannelMessage(message: ChannelMessage): string {
   const body = stripHtml(message.body?.content || '');
   if (body) {
     lines.push('');
-    lines.push(body);
+    lines.push(untrusted(`Teams channel message from ${author}`, body));
   }
   if (message.attachments && message.attachments.length > 0) {
     const names = message.attachments.map((a) => a.name).filter(Boolean);

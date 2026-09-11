@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime, truncate, untrusted } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const calendarToolDefinition = {
@@ -83,6 +84,10 @@ function dateRangeForDay(dateStr: string): { start: string; end: string } | null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
   const date = new Date(`${dateStr}T00:00:00.000Z`);
   if (isNaN(date.getTime())) return null;
+  // JS rolls impossible dates forward rather than rejecting them: 2026-02-30
+  // becomes 2026-03-02, which would return March events labelled as February.
+  // Round-tripping is the only way to tell a real date from a rolled-over one.
+  if (date.toISOString().slice(0, 10) !== dateStr) return null;
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + 1);
   return { start: date.toISOString(), end: next.toISOString() };
@@ -147,8 +152,8 @@ function formatEvent(event: CalendarEvent, compact = false): string {
   if (event.isAllDay) {
     lines.push('Time: All day');
   } else {
-    const startTime = event.start?.dateTime || 'N/A';
-    const endTime = event.end?.dateTime || 'N/A';
+    const startTime = formatTime(event.start?.dateTime);
+    const endTime = formatTime(event.end?.dateTime);
     lines.push(`Time: ${startTime} - ${endTime}`);
   }
 
@@ -178,9 +183,7 @@ function formatEvent(event: CalendarEvent, compact = false): string {
       event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
     text = stripTeamsBoilerplate(text);
     if (text) {
-      const truncated =
-        text.length > MAX_BODY_LENGTH ? text.slice(0, MAX_BODY_LENGTH) + '...' : text;
-      lines.push(truncated);
+      lines.push(untrusted('calendar event body', truncate(text, MAX_BODY_LENGTH)));
     }
   }
 
@@ -210,8 +213,8 @@ function formatEventDetail(event: EventDetail): string {
 
   lines.push(`## ${event.subject || 'Untitled'}`);
 
-  const startTime = event.start?.dateTime || 'N/A';
-  const endTime = event.end?.dateTime || 'N/A';
+  const startTime = formatTime(event.start?.dateTime);
+  const endTime = formatTime(event.end?.dateTime);
   lines.push(`Time: ${startTime} - ${endTime}`);
 
   if (event.location?.displayName) {
@@ -327,7 +330,9 @@ export async function executeCalendar(
 
   if (args.date) {
     const range = dateRangeForDay(args.date);
-    if (!range) return 'Error: Invalid date format. Expected YYYY-MM-DD.';
+    if (!range) {
+      return `Error: "${args.date}" is not a valid date. Expected YYYY-MM-DD, and the day must exist in that month.`;
+    }
     start = range.start;
     end = range.end;
   } else if (args.start && args.end) {

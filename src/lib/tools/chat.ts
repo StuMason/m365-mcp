@@ -1,24 +1,30 @@
 import { z } from 'zod';
 import { graphFetch } from '../graph.js';
+import { formatTime, truncate, untrusted } from '../format.js';
 
 export const chatToolDefinition = {
   name: 'ms_chat',
   title: 'Teams Chats',
   description:
     "Read the user's recent Microsoft Teams chats. Without chat_id lists recent chats; with chat_id returns messages from that chat.",
-  inputSchema: z.object({
-    chat_id: z.string().optional().describe('Specific chat thread ID to read messages from'),
-    count: z
-      .int()
-      .min(1)
-      .max(25)
-      .optional()
-      .describe('Number of chats/messages (1-25, default 10)'),
-    members: z
-      .boolean()
-      .optional()
-      .describe('When used with chat_id, list chat members instead of messages'),
-  }),
+  inputSchema: z
+    .object({
+      chat_id: z.string().optional().describe('Specific chat thread ID to read messages from'),
+      count: z
+        .int()
+        .min(1)
+        .max(25)
+        .optional()
+        .describe('Number of chats/messages (1-25, default 10)'),
+      members: z
+        .boolean()
+        .optional()
+        .describe('When used with chat_id, list chat members instead of messages'),
+    })
+    .refine((a) => !a.members || !!a.chat_id, {
+      message: 'members requires chat_id — pass the chat to list members for.',
+      path: ['members'],
+    }),
   annotations: {
     title: 'Teams Chats',
     readOnlyHint: true,
@@ -46,6 +52,7 @@ interface ChatMessagesResponse {
 interface LastMessagePreview {
   body?: { content?: string };
   createdDateTime?: string;
+  from?: { user?: { displayName?: string }; application?: { displayName?: string } };
 }
 
 interface Chat {
@@ -75,33 +82,43 @@ interface ChatMembersResponse {
  * Handles <br>, <p>, <emoji alt="...">, <at>, <attachment>, and other tags.
  */
 export function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<emoji[^>]*alt="([^"]*)"[^>]*\/?>/gi, '$1')
-    .replace(/<attachment[^>]*>.*?<\/attachment>/gis, '')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<emoji[^>]*alt="([^"]*)"[^>]*\/?>/gi, '$1')
+      // Teams splits a single mention across one <at> tag per word:
+      // <at id="0">Andersen,</at>&nbsp;<at id="1">Johannes</at>. Merge adjacent tags
+      // back into one before marking, or a single person becomes three @mentions.
+      .replace(/<\/at>(?:\s|&nbsp;)*<at[^>]*>/gi, ' ')
+      // Keep mentions marked. Flattened to a bare name, a mention at the start of a
+      // message is indistinguishable from a sender attribution and gets read as one.
+      .replace(/<at[^>]*>(.*?)<\/at>/gis, '@$1')
+      .replace(/<attachment[^>]*>.*?<\/attachment>/gis, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
 }
 
 /**
  * Formats a chat message into a readable line.
  */
 function formatChatMessage(msg: ChatMessage): string {
-  const sender = msg.from?.user?.displayName || 'Unknown';
-  const time = msg.createdDateTime ? new Date(msg.createdDateTime).toLocaleString() : 'N/A';
+  const sender = msg.from?.user?.displayName || 'Unknown sender';
+  const time = formatTime(msg.createdDateTime);
   let content = msg.body?.content || '';
   if (msg.body?.contentType === 'html') {
     content = stripHtml(content);
   }
-  return `**${sender}** (${time}):\n${content || '(empty message)'}`;
+  const body = untrusted(`chat message from ${sender}`, content) || '(empty message)';
+  return `**${sender}** (${time}):\n${body}`;
 }
 
 /**
@@ -122,12 +139,17 @@ function formatChatListing(chat: Chat): string {
   lines.push(`Type: ${chat.chatType || 'unknown'}`);
 
   if (chat.lastMessagePreview) {
-    const rawPreview = chat.lastMessagePreview.body?.content || '(no preview)';
-    const preview = rawPreview === '(no preview)' ? rawPreview : stripHtml(rawPreview);
-    const time = chat.lastMessagePreview.createdDateTime
-      ? new Date(chat.lastMessagePreview.createdDateTime).toLocaleString()
-      : '';
-    lines.push(`Last message${time ? ` (${time})` : ''}: ${preview}`);
+    const p = chat.lastMessagePreview;
+    // The sender was never printed, so a mention at the start of the body read as
+    // the author — "@Jane - did you get access?" was attributed to Jane, not to
+    // whoever actually sent it.
+    const sender =
+      p.from?.user?.displayName || p.from?.application?.displayName || 'Unknown sender';
+    const raw = p.body?.content || '';
+    const preview = raw ? truncate(stripHtml(raw), 300) : '(no preview)';
+    const time = p.createdDateTime ? formatTime(p.createdDateTime) : '';
+    lines.push(`Last message from ${sender}${time ? ` at ${time}` : ''}:`);
+    lines.push(untrusted(`chat message from ${sender}`, preview) || preview);
   }
 
   lines.push(`Chat ID: ${chat.id || 'N/A'}`);

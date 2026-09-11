@@ -14,7 +14,11 @@ function mockFetch(response: Partial<Response>): jest.Mock<typeof fetch> {
   return mock;
 }
 
-const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+// The configured zone, not the machine's: graph.ts and format.ts share one
+// resolution so that offset-less Graph times are interpreted in the same zone
+// they were requested in.
+const systemTimezone =
+  process.env['MS365_MCP_TIMEZONE'] || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 describe('graphFetch', () => {
   it('returns ok with data on successful response', async () => {
