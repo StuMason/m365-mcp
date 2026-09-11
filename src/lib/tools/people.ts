@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { echo } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const peopleToolDefinition = {
@@ -212,7 +213,7 @@ export async function executePeople(
 
   const users = result.data.value;
   if (!users || users.length === 0) {
-    return `No directory matches for "${args.search}".`;
+    return `No directory matches for "${echo(args.search)}".`;
   }
 
   return users.map((u) => formatUser(u)).join('\n\n');

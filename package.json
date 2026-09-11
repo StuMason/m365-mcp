@@ -19,7 +19,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/*.js",
+    "build": "tsc && node scripts/build-info.mjs && shx chmod +x dist/*.js",
     "dev": "tsc --watch",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --testPathIgnorePatterns=integration",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch --testPathIgnorePatterns=integration",

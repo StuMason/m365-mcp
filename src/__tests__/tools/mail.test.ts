@@ -574,53 +574,80 @@ describe('executeMail', () => {
   });
 
   describe('filter mode', () => {
-    it('filters unread messages', async () => {
-      mockGraphFetch.mockResolvedValue({
-        ok: true,
-        data: { value: [] },
-      });
+    // A filter now defaults to the Inbox — /me/messages counted 1450 unread across
+    // every folder where the inbox held 25 — so the folder is resolved first.
+    function mockInboxThen(messages: unknown[] = []): void {
+      mockGraphFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          data: { value: [{ id: 'inbox-id', displayName: 'Inbox' }] },
+        })
+        .mockResolvedValue({ ok: true, data: { value: messages } });
+    }
+
+    // The folder lookup also carries a $filter, so match the messages query.
+    const filterQuery = (): string => {
+      const paths = mockGraphFetch.mock.calls.map((c) => c[0] as string);
+      return paths.find((p) => p.includes('/messages?') && p.includes('$filter=')) ?? '';
+    };
+
+    it('resolves the Inbox before filtering', async () => {
+      mockInboxThen();
 
       await executeMail('test-token', { filter: 'unread' });
 
-      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
-      expect(calledPath).toContain('$filter=isRead eq false');
+      const paths = mockGraphFetch.mock.calls.map((c) => c[0] as string);
+      expect(paths[0]).toContain("displayName eq 'Inbox'");
+      expect(paths[1]).toContain('/me/mailFolders/inbox-id/messages');
+    });
+
+    it('filters unread messages', async () => {
+      mockInboxThen();
+
+      await executeMail('test-token', { filter: 'unread' });
+
+      expect(filterQuery()).toContain('$filter=isRead eq false');
     });
 
     it('filters flagged messages', async () => {
-      mockGraphFetch.mockResolvedValue({
-        ok: true,
-        data: { value: [] },
-      });
+      mockInboxThen();
 
       await executeMail('test-token', { filter: 'flagged' });
 
-      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
-      expect(calledPath).toContain("$filter=flag/flagStatus eq 'flagged'");
-      expect(calledPath).not.toContain('$orderby');
+      expect(filterQuery()).toContain("$filter=flag/flagStatus eq 'flagged'");
+      expect(filterQuery()).not.toContain('$orderby');
     });
 
     it('filters messages with attachments', async () => {
-      mockGraphFetch.mockResolvedValue({
-        ok: true,
-        data: { value: [] },
-      });
+      mockInboxThen();
 
       await executeMail('test-token', { filter: 'attachments' });
 
-      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
-      expect(calledPath).toContain('$filter=hasAttachments eq true');
+      expect(filterQuery()).toContain('$filter=hasAttachments eq true');
     });
 
     it('filters important messages', async () => {
-      mockGraphFetch.mockResolvedValue({
-        ok: true,
-        data: { value: [] },
-      });
+      mockInboxThen();
 
       await executeMail('test-token', { filter: 'important' });
 
-      const calledPath = mockGraphFetch.mock.calls[0][0] as string;
-      expect(calledPath).toContain("$filter=importance eq 'high'");
+      expect(filterQuery()).toContain("$filter=importance eq 'high'");
+    });
+
+    it('names the scope it actually searched', async () => {
+      mockInboxThen([
+        {
+          id: 'm1',
+          subject: 'One',
+          from: { emailAddress: { name: 'A', address: 'a@example.com' } },
+          receivedDateTime: '2025-06-15T10:00:00Z',
+          isRead: false,
+        },
+      ]);
+
+      const result = await executeMail('test-token', { filter: 'unread' });
+
+      expect(result).toContain('(unread in Inbox)');
     });
   });
 
@@ -690,14 +717,28 @@ describe('executeMail', () => {
   });
 
   it('returns empty message when filter returns no results', async () => {
-    mockGraphFetch.mockResolvedValue({
-      ok: true,
-      data: { value: [] },
-    });
+    // First call resolves the Inbox, second runs the filtered query.
+    mockGraphFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { value: [{ id: 'inbox-id', displayName: 'Inbox' }] },
+      })
+      .mockResolvedValue({ ok: true, data: { value: [] } });
 
     const result = await executeMail('test-token', { filter: 'flagged' });
 
     expect(result).toBe('No emails found.');
+  });
+
+  it('searches every folder when folder is "all"', async () => {
+    mockGraphFetch.mockResolvedValue({ ok: true, data: { value: [] } });
+
+    await executeMail('test-token', { filter: 'unread', folder: 'all' });
+
+    const paths = mockGraphFetch.mock.calls.map((c) => c[0] as string);
+    // No folder lookup, and the query runs against the whole mailbox.
+    expect(paths.some((p) => p.includes('displayName eq'))).toBe(false);
+    expect(paths[0]).toContain('/me/messages');
   });
 
   it('returns error for unknown filter value', async () => {

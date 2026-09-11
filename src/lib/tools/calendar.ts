@@ -242,7 +242,9 @@ function formatEventDetail(event: EventDetail): string {
     const text =
       event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
     if (text) {
-      lines.push(`\n${text}`);
+      const organiser = event.organizer?.emailAddress?.name || 'unknown organiser';
+      lines.push('');
+      lines.push(untrusted(`calendar invite from ${organiser}`, text));
     }
   }
 

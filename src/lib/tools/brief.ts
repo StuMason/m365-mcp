@@ -6,6 +6,7 @@ import { executeTasks } from './tasks.js';
 import { executeTranscripts } from './transcripts.js';
 import { executePeople } from './people.js';
 import { executeSearch } from './search.js';
+import { echo } from '../format.js';
 
 export const briefToolDefinition = {
   name: 'ms_brief',
@@ -33,6 +34,36 @@ export const briefToolDefinition = {
 const SECTION_CAP = 2500;
 
 /**
+ * Trims a section to the cap without cutting a fence in half.
+ *
+ * Sections contain <<<UNTRUSTED:nonce …>>> … <<<END UNTRUSTED:nonce>>> blocks. A
+ * blind slice left a fence open, so everything after it — including this
+ * server's own text — read as untrusted content, or worse, the reverse.
+ * Trimming back to the last completed block keeps every fence balanced.
+ */
+function trimSection(body: string): string {
+  if (body.length <= SECTION_CAP) {
+    return body;
+  }
+
+  const cut = body.slice(0, SECTION_CAP);
+  const lastEnd = cut.lastIndexOf('<<<END UNTRUSTED');
+  const lastStart = cut.lastIndexOf('<<<UNTRUSTED:');
+
+  // An unclosed fence was opened inside the cut: drop back to just before it.
+  let safe = cut;
+  if (lastStart > lastEnd) {
+    safe = cut.slice(0, lastStart);
+  } else if (lastEnd > -1) {
+    // Keep the closing marker whole rather than slicing through it.
+    const endOfMarker = cut.indexOf('>>>', lastEnd);
+    safe = endOfMarker === -1 ? cut.slice(0, lastEnd) : cut.slice(0, endOfMarker + 3);
+  }
+
+  return `${safe.trimEnd()}\n\n…trimmed. Use the underlying tool for the full list.`;
+}
+
+/**
  * Runs one section, converting a failure into a short note rather than losing the
  * whole brief. One dead section should not cost you the other five.
  */
@@ -44,21 +75,29 @@ async function section(title: string, run: () => Promise<string>): Promise<strin
     body = `(unavailable: ${error instanceof Error ? error.message : String(error)})`;
   }
 
-  const trimmed =
-    body.length > SECTION_CAP
-      ? `${body.slice(0, SECTION_CAP)}\n\n…trimmed. Use the underlying tool for the full list.`
-      : body;
-
-  return `# ${title}\n\n${trimmed.trim() || '(nothing)'}`;
+  return `# ${title}\n\n${trimSection(body).trim() || '(nothing)'}`;
 }
 
 /**
  * Returns the ISO date (YYYY-MM-DD) `daysAgo` days before the given date.
+ * Assumes the date has already been validated by isRealDate.
  */
 function shiftDate(date: string, daysAgo: number): string {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() - daysAgo);
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - daysAgo);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * True only for a date that exists.
+ *
+ * JavaScript rolls impossible dates forward, so 2026-04-31 silently becomes
+ * 2026-05-01. Round-tripping is the only way to catch it.
+ */
+function isRealDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const d = new Date(`${date}T00:00:00.000Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date;
 }
 
 /**
@@ -73,6 +112,11 @@ export async function executeBrief(
 ): Promise<string> {
   const count = Math.min(Math.max(args.count || 5, 1), 15);
   const date = args.date || new Date().toISOString().slice(0, 10);
+
+  // Fail the whole call rather than letting sections disagree about the date.
+  if (!isRealDate(date)) {
+    return `Error: "${echo(date)}" is not a valid date. Expected YYYY-MM-DD, and the day must exist in that month.`;
+  }
 
   // Catch up on one person.
   if (args.person) {
@@ -93,8 +137,7 @@ export async function executeBrief(
   const sections = await Promise.all([
     section(`Meetings on ${date}`, () => executeCalendar(token, { date, compact: true })),
     section('Unread mail', () =>
-      // Inbox, not /me/messages: the latter spans Archive and Deleted Items too,
-      // reporting ~1450 unread where the inbox holds 25.
+      // Inbox explicitly, matching ms_mail's default for a filter.
       executeMail(token, { filter: 'unread', folder: 'Inbox', count }),
     ),
     section('Recent chats', () => executeChat(token, { count })),

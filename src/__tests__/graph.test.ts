@@ -106,7 +106,7 @@ describe('graphFetch', () => {
       ok: false,
       error: {
         status: 500,
-        message: 'Graph API error (500): Internal Server Error',
+        message: 'Microsoft Graph returned an error (500).',
       },
     });
   });
@@ -256,7 +256,8 @@ describe('graphFetch', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.status).toBe(500);
-      expect(result.error.message).toContain('unable to read error response body');
+      // The raw body never reaches the caller now; it goes to stderr.
+      expect(result.error.message).toBe('Microsoft Graph returned an error (500).');
     }
   });
 });
