@@ -13,7 +13,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![CI](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml)
 
-MCP server for Microsoft 365 via the Microsoft Graph API. Read-only access to your profile, calendar, email, Teams chats, OneDrive files, and meeting transcripts from any MCP client.
+MCP server for Microsoft 365 via the Microsoft Graph API. Read-only access to your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
 
 ## Installation
 
@@ -64,13 +64,32 @@ Register an application in Azure AD with these settings:
 2. **Redirect URI**: `http://localhost` (Web platform) — or set a fixed URI via `MS365_MCP_REDIRECT_URL`
 3. **Certificates & secrets** > New client secret
 4. **API permissions** > Add the following **delegated** permissions:
-   - `User.Read`
-   - `Calendars.Read`
-   - `Mail.Read`
-   - `Chat.Read`
-   - `Files.Read`
-   - `OnlineMeetingTranscript.Read.All`
-   - `Sites.Read.All`
+
+| Permission                         | Used by                                        |
+| ---------------------------------- | ---------------------------------------------- |
+| `User.Read`                        | `ms_profile`, `ms_auth_status`                 |
+| `User.Read.All`                    | `ms_people`                                    |
+| `Mail.Read`                        | `ms_mail`                                      |
+| `Calendars.Read`                   | `ms_calendar`, `ms_schedule`, `ms_transcripts` |
+| `Files.Read`                       | `ms_files`                                     |
+| `Chat.Read`                        | `ms_chat`                                      |
+| `ChannelMessage.Read.All`          | `ms_teams`                                     |
+| `Channel.ReadBasic.All`            | `ms_teams`                                     |
+| `Team.ReadBasic.All`               | `ms_teams`                                     |
+| `OnlineMeetings.Read`              | `ms_transcripts`                               |
+| `OnlineMeetingTranscript.Read.All` | `ms_transcripts`                               |
+| `Sites.Read.All`                   | `ms_sharepoint`                                |
+| `Group.Read.All`                   | `ms_people`                                    |
+| `Tasks.Read`                       | `ms_tasks`                                     |
+
+All permissions are **delegated** and read-only: the server acts as the signed-in
+user and cannot reach anyone else's mailbox, chats or files.
+
+> **Confidential vs public clients.** If the registration uses the **Web** platform
+> with a client secret, the token request must not carry an `Origin` header — Azure
+> rejects cross-origin token redemption for anything but SPA clients
+> (`AADSTS9002326`). The server detects this from `MS365_MCP_CLIENT_SECRET` and
+> omits the header automatically.
 
 ## Tools
 
@@ -130,6 +149,45 @@ Fetch Teams meeting transcripts. Returns previews (~3000 chars) with a `transcri
 | `start`         | Start of range (ISO 8601)                     |
 | `end`           | End of range (ISO 8601)                       |
 | `transcript_id` | ID from a previous list call for full content |
+
+### `ms_teams`
+
+Browse joined Teams, their channels, and channel messages. Progressive drill-down:
+no arguments lists teams, `team_id` lists channels, `team_id` + `channel_id` reads messages.
+
+| Parameter    | Description                                           |
+| ------------ | ----------------------------------------------------- |
+| `team_id`    | Team ID to list its channels                          |
+| `channel_id` | Channel ID (with `team_id`) to read messages          |
+| `message_id` | Message ID (with both above) to read its reply thread |
+| `count`      | Max results (1-50, default 20)                        |
+
+### `ms_tasks`
+
+Read Microsoft To Do and Planner tasks. Completed tasks are hidden unless asked for.
+
+| Parameter           | Description                              |
+| ------------------- | ---------------------------------------- |
+| `list_id`           | To Do list ID to read its tasks          |
+| `planner`           | Return assigned Planner tasks instead    |
+| `include_completed` | Include finished tasks (default `false`) |
+| `count`             | Max results (1-50, default 25)           |
+
+### `ms_people`
+
+Look people up in the organisation directory. `search` resolves a name to the email
+address that `ms_schedule` needs.
+
+| Parameter | Description                                                   |
+| --------- | ------------------------------------------------------------- |
+| `search`  | Name or partial name to search for                            |
+| `user`    | Email or object ID — returns details, manager, direct reports |
+| `groups`  | List the signed-in user's group and team memberships          |
+| `count`   | Max results (1-50, default 20)                                |
+
+### `ms_server_info`
+
+Server metadata: version, registered tools, and which environment variables are set.
 
 ## Development
 

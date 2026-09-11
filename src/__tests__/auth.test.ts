@@ -295,7 +295,15 @@ describe('SCOPES', () => {
     expect(SCOPES).toContain('Files.Read');
     expect(SCOPES).toContain('OnlineMeetingTranscript.Read.All');
     expect(SCOPES).toContain('Sites.Read.All');
-    expect(SCOPES).toHaveLength(11);
+    // The scopes consented on the primary registration, in full.
+    expect(SCOPES).toContain('User.Read.All');
+    expect(SCOPES).toContain('ChannelMessage.Read.All');
+    expect(SCOPES).toContain('Channel.ReadBasic.All');
+    expect(SCOPES).toContain('Team.ReadBasic.All');
+    expect(SCOPES).toContain('OnlineMeetings.Read');
+    expect(SCOPES).toContain('Group.Read.All');
+    expect(SCOPES).toContain('Tasks.Read');
+    expect(SCOPES).toHaveLength(18);
   });
 
   it('is a frozen array of strings', () => {
@@ -397,6 +405,39 @@ describe('refreshAccessToken', () => {
     expect(params.get('client_id')).toBe('test-client-id');
     expect(params.get('client_secret')).toBe('test-client-secret');
     expect(params.get('refresh_token')).toBe('my-refresh-token');
+    // Without an explicit scope, a token cached from an older release would keep
+    // refreshing with only the scopes it was originally granted.
+    expect(params.get('scope')).toBe(SCOPES.join(' '));
+  });
+
+  it('omits the Origin header on refresh for a confidential client', async () => {
+    process.env['MS365_MCP_REDIRECT_URL'] = 'http://localhost:8000/auth/msgraph/callback';
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
+    } as Response);
+
+    await refreshAccessToken(config, 'rt');
+
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Origin']).toBeUndefined();
+    delete process.env['MS365_MCP_REDIRECT_URL'];
+  });
+
+  it('sends the Origin header on refresh for a public client', async () => {
+    process.env['MS365_MCP_REDIRECT_URL'] = 'http://localhost:9999/callback';
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
+    } as Response);
+
+    await refreshAccessToken({ clientId: 'public-id', tenantId: 'tenant' }, 'rt');
+
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Origin']).toBe('http://localhost:9999');
+    delete process.env['MS365_MCP_REDIRECT_URL'];
   });
 
   it('returns null and deletes tokens on HTTP error', async () => {
@@ -584,10 +625,53 @@ describe('exchangeCodeForTokens', () => {
       exchangeCodeForTokens(config, 'bad-code', 'http://localhost:12345/callback'),
     ).rejects.toThrow('Token exchange failed (400): bad_request');
   });
+
+  // Azure only permits cross-origin token redemption for SPA-platform clients.
+  // Sending Origin from a confidential client fails with AADSTS9002326.
+  it('omits the Origin header for a confidential client', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
+    } as Response);
+
+    await exchangeCodeForTokens(config, 'code', 'http://localhost:8000/auth/msgraph/callback');
+
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Origin']).toBeUndefined();
+  });
+
+  it('sends the Origin header for a public client', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
+    } as Response);
+
+    const publicConfig: AuthConfig = { clientId: 'public-id', tenantId: 'tenant' };
+    await exchangeCodeForTokens(publicConfig, 'code', 'http://localhost:9999/callback');
+
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Origin']).toBe('http://localhost:9999');
+  });
 });
 
 describe('waitForAuthCallback', () => {
   const realFetch = global.fetch;
+
+  // MS365_MCP_REDIRECT_URL pins a fixed port (some registrations require one), so a
+  // clash is a real failure mode rather than something to retry on another port.
+  it('rejects with a usable message when the callback port is taken', async () => {
+    const { createServer } = await import('node:http');
+    const blocker = createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, resolve));
+    const port = (blocker.address() as { port: number }).port;
+
+    const { promise } = waitForAuthCallback(port, 'state', 5000);
+    await expect(promise).rejects.toThrow(`Port ${port} is already in use`);
+
+    blocker.close();
+  });
 
   it('resolves with code on valid callback', async () => {
     const port = await findAvailablePort();

@@ -2,6 +2,7 @@ import { graphFetch } from '../graph.js';
 
 export const calendarToolDefinition = {
   name: 'ms_calendar',
+  title: 'Calendar',
   description:
     "Fetch the user's Microsoft 365 calendar events. Defaults to today if no date params given. Can also list calendars or drill down into a specific event.",
   inputSchema: {
@@ -13,6 +14,13 @@ export const calendarToolDefinition = {
       event_id: { type: 'string', description: 'Event ID for full detail drill-down' },
       calendars: { type: 'boolean', description: 'List all calendars' },
     },
+  },
+  annotations: {
+    title: 'Calendar',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 
