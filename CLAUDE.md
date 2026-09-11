@@ -40,9 +40,12 @@ src/
 │       ├── teams.ts        # ms_teams — /me/joinedTeams → channels → messages
 │       ├── tasks.ts        # ms_tasks — /me/todo, /me/planner/tasks
 │       ├── people.ts       # ms_people — /users, /me/memberOf
+│       ├── search.ts       # ms_search — /search/query across M365
+│       ├── insights.ts     # ms_insights — /me/insights/{used,shared,trending}
+│       ├── brief.ts        # ms_brief — composes the tools above, no Graph calls
 │       ├── server-info.ts  # ms_server_info — version + registered tools
 │       └── transcripts.ts  # ms_transcripts — calendar → meeting ID → VTT
-└── __tests__/            # Jest tests (356 tests, ~95% coverage)
+└── __tests__/            # Jest tests (393 tests, ~95% coverage)
 ```
 
 ### Auth Flow
@@ -73,6 +76,18 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 - **Graph query quirks**: `/me/joinedTeams` and `/teams/{id}/channels` reject `$top`
   and are trimmed client-side; `/users?$search` needs the `ConsistencyLevel: eventual`
   header.
+- **`/search/query` constraints** (verified live, do not "simplify"): only ONE
+  `entityRequest` per call, and entity types cannot be combined freely —
+  `message`+`chatMessage` is legal, `message`+`event` is not. `ms_search` therefore
+  issues one call per compatible group, in parallel. `person` needs `People.Read`,
+  which is not consented.
+- **`ms_brief` composes, it does not call Graph.** Every section is an existing
+  `execute*` function. Keep it that way: formatting and error handling belong with
+  the area they came from. A failing section degrades to a note rather than taking
+  the brief down.
+- **Item insights are often disabled tenant-wide** (`trending` returns 403
+  `ItemInsightsDisabled`). That is policy, not a fault, so `ms_insights` explains it
+  instead of surfacing a raw error.
 
 ## Adding a New Tool
 

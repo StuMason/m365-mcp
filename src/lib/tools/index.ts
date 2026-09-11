@@ -10,6 +10,9 @@ import { sharepointToolDefinition } from './sharepoint.js';
 import { teamsToolDefinition } from './teams.js';
 import { tasksToolDefinition } from './tasks.js';
 import { peopleToolDefinition } from './people.js';
+import { searchToolDefinition } from './search.js';
+import { insightsToolDefinition } from './insights.js';
+import { briefToolDefinition } from './brief.js';
 import { serverInfoToolDefinition } from './server-info.js';
 
 /**
@@ -37,6 +40,9 @@ export const TOOL_DEFINITIONS = [
   teamsToolDefinition,
   tasksToolDefinition,
   peopleToolDefinition,
+  searchToolDefinition,
+  insightsToolDefinition,
+  briefToolDefinition,
   serverInfoToolDefinition,
 ];
 
