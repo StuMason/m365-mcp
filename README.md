@@ -25,22 +25,60 @@ claude mcp add m365-mcp -e MS365_MCP_CLIENT_ID=your-client-id -e MS365_MCP_TENAN
 
 ### Claude Desktop
 
+**Node.js 20+ must be installed.** Claude Desktop does not ship a Node runtime that
+config-based servers can use, so there is no zero-install option — see
+[Sharing with colleagues](#sharing-with-colleagues) below.
+
 Add to your Claude Desktop config (`claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
-    "m365-mcp": {
+    "m365": {
       "command": "npx",
-      "args": ["-y", "@masonator/m365-mcp"],
+      "args": ["-y", "@masonator/m365-mcp@1.0.0"],
       "env": {
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
         "MS365_MCP_CLIENT_ID": "your-azure-ad-client-id",
-        "MS365_MCP_TENANT_ID": "your-azure-ad-tenant-id"
+        "MS365_MCP_TENANT_ID": "your-azure-ad-tenant-id",
+        "MS365_MCP_CLIENT_SECRET": "your-client-secret",
+        "MS365_MCP_REDIRECT_URL": "http://localhost:8000/auth/msgraph/callback",
+        "MS365_MCP_TIMEZONE": "Europe/London"
       }
     }
   }
 }
 ```
+
+**The `PATH` line is not optional on macOS.** Claude Desktop launches servers with a
+minimal environment that does not include Homebrew or the Node installer's directory.
+Without it you get `env: node: No such file or directory` and the server never starts —
+`npx` is a script whose shebang resolves `node` from `PATH`.
+
+The value above covers Homebrew on Apple Silicon (`/opt/homebrew/bin`) and Homebrew or
+the official installer on Intel (`/usr/local/bin`). Directories that do not exist are
+ignored, so the same line is safe on every Mac. If you use `nvm`, `volta` or `fnm`, add
+your version directory — `node -e "console.log(process.execPath)"` prints it.
+
+On Windows, omit the `PATH` entry; the Node installer puts `npx` on the system path.
+
+### Sharing with colleagues
+
+The config above is portable as written — it contains no machine-specific paths, so it
+can be pasted as-is. Two things determine whether it works for someone else:
+
+1. **They need Node.js 20+.** There is no way around this. Claude Desktop's own Node
+   runtime is only available to installed extensions (`.mcpb` bundles), not to servers
+   configured in `claude_desktop_config.json`, and some organisations block extensions
+   by policy.
+2. **They need their own Azure AD credentials**, or access to a shared app registration.
+   The permissions are delegated, so each person signs in as themselves and only ever
+   sees their own data — but the client ID, tenant ID and secret still have to come from
+   an app registration they are allowed to use.
+
+Pinning the version (`@1.0.0` rather than bare `@masonator/m365-mcp`) means everyone runs
+the same build. First launch takes a few seconds while `npx` downloads the package;
+after that it starts from cache in about a second.
 
 ### First Run
 
