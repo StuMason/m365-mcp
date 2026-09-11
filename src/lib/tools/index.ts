@@ -14,6 +14,7 @@ import { searchToolDefinition } from './search.js';
 import { insightsToolDefinition } from './insights.js';
 import { briefToolDefinition } from './brief.js';
 import { serverInfoToolDefinition } from './server-info.js';
+import { workIqToolDefinition } from './workiq.js';
 
 /**
  * Every tool this server exposes, in the order they are advertised.
@@ -43,6 +44,7 @@ export const TOOL_DEFINITIONS = [
   searchToolDefinition,
   insightsToolDefinition,
   briefToolDefinition,
+  workIqToolDefinition,
   serverInfoToolDefinition,
 ];
 

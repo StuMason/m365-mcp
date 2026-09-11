@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { echo } from '../format.js';
 import { graphFetch } from '../graph.js';
+import { lacksScope, missingScope } from '../scopes.js';
 
 export const peopleToolDefinition = {
   name: 'ms_people',
@@ -156,8 +157,19 @@ export async function executePeople(
       return `Error: ${result.error.message}`;
     }
 
-    const groups = (result.data.value || []).filter((g) => g.displayName);
+    const all = result.data.value || [];
+    const groups = all.filter((g) => g.displayName);
     if (groups.length === 0) {
+      // Graph answers /me/memberOf under plain User.Read, but nulls every property
+      // except id. Reporting that as "none" would be wrong in the one way that
+      // matters: the memberships exist, they are just unreadable.
+      if (all.length > 0) {
+        return missingScope(
+          'Group.Read.All',
+          `You are in ${all.length} group${all.length === 1 ? '' : 's'}, but their names and addresses are hidden without it \u2014 only opaque IDs come back.`,
+          'ms_teams lists the teams you have joined by name, which covers most group membership in practice.',
+        );
+      }
       return 'No group memberships found.';
     }
 
@@ -166,6 +178,13 @@ export async function executePeople(
 
   // Mode 2: one person, with manager and direct reports
   if (args.user) {
+    if (lacksScope(token, 'User.Read.All')) {
+      return missingScope(
+        'User.Read.All',
+        'Other people\u2019s directory entries \u2014 job title, department, manager, direct reports \u2014 cannot be read without it.',
+        'ms_profile still reads your own entry, and colleagues who appear in your mail, chats or meetings are visible through ms_mail, ms_chat and ms_calendar.',
+      );
+    }
     const result = await graphFetch<DirectoryUser>(
       `/users/${encodeURIComponent(args.user)}?${USER_SELECT}`,
       token,
@@ -197,6 +216,14 @@ export async function executePeople(
   // Mode 3: directory search
   if (!args.search) {
     return 'Provide search to find people, user to read one person, or groups to list your memberships.';
+  }
+
+  if (lacksScope(token, 'User.Read.All')) {
+    return missingScope(
+      'User.Read.All',
+      'The directory cannot be searched without it, so people cannot be looked up by name.',
+      'ms_search finds people through the mail, chats and meetings you share with them.',
+    );
   }
 
   // $search on /users requires the eventual consistency level and a $count hint.

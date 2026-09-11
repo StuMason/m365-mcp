@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-11
+
+### Added
+
+- `ms_workiq` reaches the Microsoft Work IQ agent over its remote MCP server. Work
+  IQ is a separate OAuth resource, so it redeems its own access token from the same
+  sign-in. Its `fetch` tool proxies Graph with the signed-in user's own M365
+  permissions rather than the app registration's consented scopes, so paths the
+  Graph token is refused — `/me/manager`, `/teams/{id}/channels` — become readable.
+
+  **This is the first tool here that is not read-only**, and it is off unless
+  `MS365_MCP_WORKIQ_SCOPE` is set. The `WorkIQAgent.Ask` scope carries Work IQ's
+  whole surface, `create_entity`/`update_entity`/`delete_entity`/`do_action`
+  included, with no read-only subset. See the README before enabling it.
+
+- `MS365_MCP_SCOPES` overrides the requested scope list. Set it to
+  `https://graph.microsoft.com/.default offline_access` on a registration whose
+  configured permissions exceed its consented ones, where naming an unconsented
+  scope fails the whole request with `AADSTS65001`.
+
+- `MS365_MCP_TOKEN_FILE` names the token file within the config directory, so two
+  app registrations can be used side by side instead of evicting each other.
+
+- `MS365_MCP_CLIENT_TYPE=spa` opts into the `Origin` header.
+
+- Tools whose permission is missing now explain what is unavailable and what still
+  works, rather than returning a bare `403`. `ms_auth_status` reports the token's
+  own `scp` claim, so it agrees with what the tools check.
+
+### Fixed
+
+- The `Origin` header was sent whenever no client secret was set, on the assumption
+  that secretless means Single-Page Application. It does not — a "Mobile and desktop
+  applications" registration is also secretless and rejects `Origin` with
+  `AADSTS9002326`, which made sign-in impossible for that platform. It is now opt-in
+  via `MS365_MCP_CLIENT_TYPE`.
+
+- A failed token refresh no longer deletes the stored session unconditionally. Any
+  failure — a transient network error, a wrong scope, a mismatched client — forced a
+  full browser re-authentication for something that would have succeeded on the next
+  attempt. Deletion is now limited to `invalid_grant`, excluding `AADSTS70000`, which
+  Azure also returns for a malformed request rather than a dead token.
+
+- `ms_people` with `groups` no longer reports "no group memberships" when Graph
+  returns memberships with every property nulled. Under plain `User.Read` the
+  memberships are real and only their names are hidden.
+
 ## [1.0.1] - 2026-09-11
 
 ### Fixed

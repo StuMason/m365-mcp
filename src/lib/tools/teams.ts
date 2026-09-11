@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { formatTime, untrusted } from '../format.js';
 import { graphFetch } from '../graph.js';
+import { lacksScope, missingScope } from '../scopes.js';
 import { stripHtml } from './chat.js';
 
 export const teamsToolDefinition = {
@@ -208,6 +209,13 @@ export async function executeTeams(
 
   // Mode 3: channels in a team
   if (args.team_id) {
+    if (lacksScope(token, 'Channel.ReadBasic.All')) {
+      return missingScope(
+        'Channel.ReadBasic.All',
+        'A team\u2019s channels cannot be listed without it, so there is no way to discover a channel_id from here.',
+        'Reading messages still works when the channel_id comes from somewhere else \u2014 a Teams deep link contains it, and ms_search returns channel messages directly.',
+      );
+    }
     const path = `/teams/${encodeURIComponent(args.team_id)}/channels`;
     const result = await graphFetch<ChannelsResponse>(path, token, { timezone: false });
 
