@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { formatTime } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const tasksToolDefinition = {
@@ -5,27 +7,23 @@ export const tasksToolDefinition = {
   title: 'To Do & Planner',
   description:
     'Read Microsoft To Do and Planner tasks. Without parameters lists To Do task lists; with list_id returns the tasks in that list; with planner=true returns Planner tasks assigned to the user.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      list_id: {
-        type: 'string',
-        description: 'To Do list ID to read its tasks',
-      },
-      planner: {
-        type: 'boolean',
-        description: 'Return Planner tasks assigned to the user instead of To Do lists',
-      },
-      include_completed: {
-        type: 'boolean',
-        description: 'Include completed tasks (default false — only open tasks are returned)',
-      },
-      count: {
-        type: 'integer',
-        description: 'Max results to return (1-50, default 25)',
-      },
-    },
-  },
+  inputSchema: z
+    .object({
+      list_id: z.string().optional().describe('To Do list ID to read its tasks'),
+      planner: z
+        .boolean()
+        .optional()
+        .describe('Return Planner tasks assigned to the user instead of To Do lists'),
+      include_completed: z
+        .boolean()
+        .optional()
+        .describe('Include completed tasks (default false \u2014 only open tasks are returned)'),
+      count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 25)'),
+    })
+    .refine((a) => !(a.planner && a.list_id), {
+      message: 'list_id is a To Do list and cannot be combined with planner.',
+      path: ['list_id'],
+    }),
   annotations: {
     title: 'To Do & Planner',
     readOnlyHint: true,
@@ -105,10 +103,10 @@ function formatTodoTask(task: TodoTask): string {
     lines.push(`Importance: ${task.importance}`);
   }
   if (task.dueDateTime?.dateTime) {
-    lines.push(`Due: ${new Date(task.dueDateTime.dateTime).toLocaleString()}`);
+    lines.push(`Due: ${formatTime(task.dueDateTime.dateTime)}`);
   }
   if (task.completedDateTime?.dateTime) {
-    lines.push(`Completed: ${new Date(task.completedDateTime.dateTime).toLocaleString()}`);
+    lines.push(`Completed: ${formatTime(task.completedDateTime.dateTime)}`);
   }
   const body = (task.body?.content || '').trim();
   if (body) {
@@ -130,7 +128,7 @@ function formatPlannerTask(task: PlannerTask): string {
   lines.push(`## ${pct === 100 ? '[x]' : '[ ]'} ${task.title || 'Untitled task'}`);
   lines.push(`Progress: ${pct}%`);
   if (task.dueDateTime) {
-    lines.push(`Due: ${new Date(task.dueDateTime).toLocaleString()}`);
+    lines.push(`Due: ${formatTime(task.dueDateTime)}`);
   }
   if (task.planId) {
     lines.push(`Plan ID: ${task.planId}`);

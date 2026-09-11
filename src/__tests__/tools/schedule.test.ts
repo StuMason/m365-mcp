@@ -13,6 +13,12 @@ const mockGraphPost =
 
 jest.unstable_mockModule('../../lib/graph.js', () => ({
   graphPost: mockGraphPost,
+  // Real implementation: the point of the per-mailbox path is that it
+  // sanitises, so stubbing it away would hide the bug it was added for.
+  sanitiseErrorText: (t: string): string | null =>
+    /AutoDiscover|InfoWorker|recipient was not found/i.test(t)
+      ? 'That mailbox could not be found.'
+      : null,
 }));
 
 const { executeSchedule } = await import('../../lib/tools/schedule.js');
@@ -57,7 +63,6 @@ describe('executeSchedule', () => {
       expect.objectContaining({
         schedules: ['alice@example.com'],
       }),
-      expect.any(Object),
     );
   });
 
@@ -145,11 +150,12 @@ describe('executeSchedule', () => {
       '/me/calendar/getSchedule',
       'test-token',
       expect.objectContaining({
-        startTime: expect.objectContaining({ dateTime: '2026-02-23T08:00:00' }),
-        endTime: expect.objectContaining({ dateTime: '2026-02-23T18:00:00' }),
+        // The window is wall-clock in the user's zone. Labelling it UTC shifted
+        // every query by the offset.
+        startTime: { dateTime: '2026-02-23T08:00:00', timeZone: 'Europe/London' },
+        endTime: { dateTime: '2026-02-23T18:00:00', timeZone: 'Europe/London' },
         availabilityViewInterval: 30,
       }),
-      expect.any(Object),
     );
   });
 
@@ -213,7 +219,7 @@ describe('executeSchedule', () => {
     });
 
     expect(result).toContain('Untitled');
-    expect(result).toContain('? to ?');
+    expect(result).toContain('unknown to unknown');
     expect(result).toContain('[unknown]');
   });
 
@@ -260,7 +266,7 @@ describe('executeSchedule', () => {
 
     expect(result).toContain('broken@example.com');
     expect(result).toContain('Unable to retrieve schedule');
-    expect(result).toContain('unknown error');
+    expect(result).toContain('the mailbox could not be read.');
   });
 
   it('handles per-user error for non-existent email', async () => {
@@ -286,7 +292,10 @@ describe('executeSchedule', () => {
 
     expect(result).toContain('fake@example.com');
     expect(result).toContain('Unable to retrieve schedule');
-    expect(result).toContain('The specified recipient was not found.');
+    // The raw Graph text is replaced: an unknown address used to return an
+    // Autodiscover exception carrying the EWS endpoint, backend server name and
+    // a diagnostic LID.
+    expect(result).toContain('That mailbox could not be found.');
     expect(result).not.toContain('Availability:');
   });
 

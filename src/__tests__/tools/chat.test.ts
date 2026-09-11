@@ -236,8 +236,8 @@ describe('executeChat', () => {
 
     const result = await executeChat('test-token', { chat_id: 'chat-123' });
 
-    expect(result).toContain('**Unknown**');
-    expect(result).toContain('(N/A)');
+    expect(result).toContain('**Unknown sender**');
+    expect(result).toContain('(unknown)');
     expect(result).toContain('System message');
   });
 
@@ -285,7 +285,8 @@ describe('executeChat', () => {
     expect(result).toContain('## Preview Test');
     expect(result).toContain('(no preview)');
     // No timestamp in the last message line since createdDateTime is null
-    expect(result).toContain('Last message: (no preview)');
+    expect(result).toContain('Last message from Unknown sender:');
+    expect(result).toContain('(no preview)');
   });
 
   it('handles messages with empty body', async () => {
@@ -304,7 +305,7 @@ describe('executeChat', () => {
 
     const result = await executeChat('test-token', { chat_id: 'chat-123' });
 
-    expect(result).toContain('(empty message)');
+    expect(result).toContain('[no text content]');
   });
 
   it('strips HTML from chat listing preview', async () => {
@@ -327,7 +328,7 @@ describe('executeChat', () => {
 
     const result = await executeChat('test-token', {});
 
-    expect(result).toContain('Hey Stuart, check this out');
+    expect(result).toContain('Hey @Stuart, check this out');
     expect(result).not.toContain('<p>');
     expect(result).not.toContain('<at');
   });
@@ -453,8 +454,18 @@ describe('stripHtml', () => {
     expect(stripHtml('<emoji id="smile" alt="😊"/>')).toBe('😊');
   });
 
-  it('preserves text inside at-mention tags', () => {
-    expect(stripHtml('<at id="0">Stuart Mason</at>')).toBe('Stuart Mason');
+  it('marks at-mentions with @ so they cannot be read as a sender', () => {
+    expect(stripHtml('<at id="0">Stuart Mason</at>')).toBe('@Stuart Mason');
+  });
+
+  it('merges the multiple at-tags Teams emits for one mention', () => {
+    // Teams splits a mention into one tag per word, which produced "@Andersen,
+    // @Johannes @(Contractor)" for a single person.
+    expect(
+      stripHtml(
+        '<at id="0">Andersen,</at>&nbsp;<at id="1">Johannes</at>&nbsp;<at id="2">(Contractor)</at> - hi',
+      ),
+    ).toBe('@Andersen, Johannes (Contractor) - hi');
   });
 
   it('removes attachment tags and content', () => {

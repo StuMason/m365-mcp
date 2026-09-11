@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const profileToolDefinition = {
@@ -5,16 +6,12 @@ export const profileToolDefinition = {
   title: 'My Profile',
   description:
     "Fetch the user's Microsoft 365 profile. Optionally include manager, reports, groups, or photo.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      include: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Additional data to include: "manager", "reports", "groups", "photo"',
-      },
-    },
-  },
+  inputSchema: z.object({
+    include: z
+      .array(z.string())
+      .optional()
+      .describe('Additional data to include: "manager", "reports", "groups", "photo"'),
+  }),
   annotations: {
     title: 'My Profile',
     readOnlyHint: true,

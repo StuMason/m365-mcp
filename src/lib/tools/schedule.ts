@@ -1,37 +1,32 @@
-import { graphPost } from '../graph.js';
+import { z } from 'zod';
+import { graphPost, sanitiseErrorText } from '../graph.js';
+import { formatTime, timezone } from '../format.js';
 
 export const scheduleToolDefinition = {
   name: 'ms_schedule',
   title: 'Free/Busy Schedule',
   description:
     "Check people's availability / free-busy status for a given time window. Accepts one or more email addresses and returns their schedule with time slots showing free, busy, tentative, out of office, or working elsewhere.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      emails: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Email addresses to check availability for (required)',
-      },
-      date: {
-        type: 'string',
-        description: 'Date to check (YYYY-MM-DD). Defaults to today.',
-      },
-      start: {
-        type: 'string',
-        description: 'Start time (HH:MM, 24h). Defaults to 08:00.',
-      },
-      end: {
-        type: 'string',
-        description: 'End time (HH:MM, 24h). Defaults to 18:00.',
-      },
-      interval: {
-        type: 'number',
-        description: 'Slot duration in minutes. Defaults to 30.',
-      },
-    },
-    required: ['emails'],
-  },
+  inputSchema: z.object({
+    emails: z.array(z.string()).describe('Email addresses to check availability for (required)'),
+    date: z.string().optional().describe('Date to check (YYYY-MM-DD). Defaults to today.'),
+    start: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected a 24-hour time like 08:00')
+      .optional()
+      .describe('Start time (HH:MM, 24h). Defaults to 08:00.'),
+    end: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected a 24-hour time like 18:00')
+      .optional()
+      .describe('End time (HH:MM, 24h). Defaults to 18:00.'),
+    interval: z
+      .int()
+      .min(5)
+      .max(1440)
+      .optional()
+      .describe('Slot duration in minutes. Graph accepts 5-1440. Defaults to 30.'),
+  }),
   annotations: {
     title: 'Free/Busy Schedule',
     readOnlyHint: true,
@@ -118,8 +113,8 @@ function formatScheduleItems(items?: ScheduleItem[]): string[] {
   const lines: string[] = ['', 'Scheduled items:'];
   for (const item of items) {
     const subject = item.subject || 'Untitled';
-    const start = item.start?.dateTime || '?';
-    const end = item.end?.dateTime || '?';
+    const start = formatTime(item.start?.dateTime);
+    const end = formatTime(item.end?.dateTime);
     const status = item.status || 'unknown';
     lines.push(`  - ${subject} (${start} to ${end}) [${status}]`);
   }
@@ -139,18 +134,26 @@ export async function executeSchedule(token: string, args: ScheduleArgs): Promis
   const end = args.end || '18:00';
   const interval = args.interval ?? 30;
 
+  // The times are wall-clock in the user's zone, so they must be sent with that
+  // zone. Labelling them UTC shifted every free/busy window by the offset —
+  // asking for 08:00 actually queried 09:00 in London, 10:00 in Brussels.
+  const tz = timezone();
   const body = {
     schedules: args.emails,
-    startTime: { dateTime: `${date}T${start}:00`, timeZone: 'UTC' },
-    endTime: { dateTime: `${date}T${end}:00`, timeZone: 'UTC' },
+    startTime: { dateTime: `${date}T${start}:00`, timeZone: tz },
+    endTime: { dateTime: `${date}T${end}:00`, timeZone: tz },
     availabilityViewInterval: interval,
   };
 
+  // The Prefer header matters here, not just on the request times. Without it
+  // getSchedule returns scheduleItems in UTC as offset-less strings — shapes that
+  // are indistinguishable from local wall-clock, so a 14:00 meeting came back as
+  // "13:00" and would be labelled with the local zone. With it, Graph returns the
+  // items already in the requested zone, matching ms_calendar.
   const result = await graphPost<typeof body, ScheduleResponse>(
     '/me/calendar/getSchedule',
     token,
     body,
-    { timezone: false },
   );
 
   if (!result.ok) {
@@ -169,14 +172,23 @@ export async function executeSchedule(token: string, args: ScheduleArgs): Promis
     lines.push(`## ${entry.scheduleId}`);
 
     if (entry.error) {
+      // getSchedule reports per-mailbox failures inside a 200 response, so these
+      // never reach the HTTP error path. Unsanitised, an unknown address returned
+      // an Autodiscover exception with the EWS endpoint, the backend server name
+      // and a diagnostic LID.
+      const raw = entry.error.message || entry.error.responseCode || '';
+      const safe = sanitiseErrorText(raw);
+      if (!safe && raw) {
+        process.stderr.write(`getSchedule error for ${entry.scheduleId}: ${raw}\n`);
+      }
       lines.push(
-        `Error: Unable to retrieve schedule — ${entry.error.message || entry.error.responseCode || 'unknown error'}`,
+        `Error: Unable to retrieve schedule — ${safe ?? 'the mailbox could not be read.'}`,
       );
       sections.push(lines.join('\n'));
       continue;
     }
 
-    lines.push(`Date: ${date} | ${start} - ${end} (${interval}-min slots)`);
+    lines.push(`Date: ${date} | ${start} - ${end} ${tz} (${interval}-min slots)`);
     lines.push('');
 
     if (entry.availabilityView) {

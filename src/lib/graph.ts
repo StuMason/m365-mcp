@@ -1,3 +1,4 @@
+import { timezone } from './format.js';
 export interface GraphError {
   status: number;
   message: string;
@@ -32,9 +33,9 @@ function buildHeaders(token: string, options?: GraphFetchOptions): Record<string
   };
 
   if (options?.timezone !== false) {
-    const tz =
-      process.env.MS365_MCP_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    headers['Prefer'] = `outlook.timezone="${tz}"`;
+    // Same resolution as format.ts: formatTime treats offset-less Graph times as
+    // already being in this zone, so the two must not drift apart.
+    headers['Prefer'] = `outlook.timezone="${timezone()}"`;
   }
 
   if (options?.headers) {
@@ -42,6 +43,68 @@ function buildHeaders(token: string, options?: GraphFetchOptions): Record<string
   }
 
   return headers;
+}
+
+/**
+ * Known Graph error codes mapped to what the caller can actually act on.
+ * Anything matched here is reported without the raw body.
+ */
+const ERROR_HINTS: Array<[RegExp, string]> = [
+  [/AutoDiscover|Availability(Config|Service)|InfoWorker/i, 'That mailbox could not be found.'],
+  [/ErrorInvalidIdMalformed|invalid.*id|ErrorInvalidId\b/i, 'That ID is not valid for this tool.'],
+  [/ItemNotFound|ErrorItemNotFound/i, 'That item no longer exists, or you cannot see it.'],
+  [/ErrorAccessDenied|Forbidden/i, 'You do not have access to that item.'],
+  [
+    /ThrottledRequest|TooManyRequests/i,
+    'Microsoft Graph is throttling requests — try again shortly.',
+  ],
+  [/MailboxNotEnabled|ErrorNonExistentMailbox/i, 'That user has no mailbox.'],
+  [/recipient was not found|RecipientNotFound/i, 'That mailbox could not be found.'],
+];
+
+/**
+ * Maps an error string to the caller-facing hint, or null if unrecognised.
+ *
+ * Separate from sanitiseGraphError because not every Graph error arrives as an
+ * HTTP failure: getSchedule returns 200 with per-mailbox errors inside the body,
+ * which bypassed the HTTP path entirely and leaked an Autodiscover exception
+ * complete with EWS endpoint, backend server name and diagnostic LID.
+ */
+export function sanitiseErrorText(text: string): string | null {
+  for (const [pattern, hint] of ERROR_HINTS) {
+    if (pattern.test(text)) {
+      return hint;
+    }
+  }
+  return null;
+}
+
+/**
+ * Turns a raw Graph error body into something safe and useful.
+ *
+ * Graph error bodies carry internal detail with no value to the caller: EWS
+ * endpoints, .NET exception class names, backend server names and diagnostic
+ * LIDs. That is needless disclosure through an assistant's context, so the raw
+ * body goes to stderr and the caller gets the intent.
+ */
+export function sanitiseGraphError(status: number, body: string): string {
+  const hint = sanitiseErrorText(body);
+  if (hint) {
+    return `${hint} (Graph error ${status})`;
+  }
+
+  // Unrecognised: surface the code only, never the surrounding prose.
+  let code: string | undefined;
+  try {
+    code = (JSON.parse(body) as { error?: { code?: string } }).error?.code;
+  } catch {
+    code = undefined;
+  }
+
+  process.stderr.write(`Graph API error (${status}): ${body}\n`);
+  return code
+    ? `Microsoft Graph returned an error (${status}, ${code}).`
+    : `Microsoft Graph returned an error (${status}).`;
 }
 
 /**
@@ -83,7 +146,7 @@ async function handleResponse<T>(response: Response): Promise<GraphResult<T>> {
       } catch {
         text = '(unable to read error response body)';
       }
-      message = `Graph API error (${status}): ${text}`;
+      message = sanitiseGraphError(status, text);
       break;
     }
   }

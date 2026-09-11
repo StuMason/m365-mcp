@@ -578,7 +578,7 @@ describe('executeTranscripts', () => {
 
       expect(result).toContain('Found 1 meetings, 1 with transcripts.');
       expect(result).toContain('## Sprint Planning');
-      expect(result).toContain('Date: 2025-06-15T10:00:00');
+      expect(result).toContain('Date: 2025-06-15 10:00 BST');
       expect(result).toContain('Attendees: Alice, Bob');
       expect(result).toContain(`Transcript ID: ${meetingId}/transcript-001`);
       // List mode no longer fetches VTT previews — drill-down handles full content
@@ -755,7 +755,7 @@ describe('executeTranscripts', () => {
     it('returns error for invalid date format', async () => {
       const result = await executeTranscripts('test-token', { date: 'not-a-date' });
 
-      expect(result).toBe('Error: Invalid date format. Expected YYYY-MM-DD.');
+      expect(result).toContain('is not a valid date');
     });
 
     it('falls back to beta for transcript listing on 403', async () => {

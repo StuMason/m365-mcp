@@ -9,11 +9,11 @@
 
 [![npm version](https://img.shields.io/npm/v/@masonator/m365-mcp.svg)](https://www.npmjs.com/package/@masonator/m365-mcp)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![CI](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml)
 
-MCP server for Microsoft 365 via the Microsoft Graph API. Read-only access to your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
+MCP server for Microsoft 365 via the Microsoft Graph API. 16 tools giving read-only access to your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
 
 ## Installation
 
@@ -105,11 +105,12 @@ Fetch your Microsoft 365 profile — display name, email, job title, office loca
 
 Fetch calendar events. Defaults to today.
 
-| Parameter | Description                |
-| --------- | -------------------------- |
-| `date`    | Specific date (YYYY-MM-DD) |
-| `start`   | Start of range (ISO 8601)  |
-| `end`     | End of range (ISO 8601)    |
+| Parameter | Description                                                 |
+| --------- | ----------------------------------------------------------- |
+| `date`    | Specific date (YYYY-MM-DD)                                  |
+| `start`   | Start of range (ISO 8601)                                   |
+| `end`     | End of range (ISO 8601)                                     |
+| `compact` | Summarise each event, omitting the body. Good for scanning. |
 
 ### `ms_mail`
 
@@ -184,6 +185,46 @@ address that `ms_schedule` needs.
 | `user`    | Email or object ID — returns details, manager, direct reports |
 | `groups`  | List the signed-in user's group and team memberships          |
 | `count`   | Max results (1-50, default 20)                                |
+
+### `ms_search`
+
+Search across mail, Teams chats, calendar, OneDrive and SharePoint in one call. Use this
+when you don't already know where something lives. Supports KQL, so `from:jane subject:budget`
+works.
+
+| Parameter | Description                                                |
+| --------- | ---------------------------------------------------------- |
+| `query`   | What to search for (required)                              |
+| `types`   | Limit to `mail`, `chat`, `calendar`, `files`, `sharepoint` |
+| `count`   | Max results per area (1-25, default 5)                     |
+
+### `ms_insights`
+
+Documents you recently worked with, or that were shared with you.
+
+| Parameter | Description                               |
+| --------- | ----------------------------------------- |
+| `kind`    | `used` (default), `shared`, or `trending` |
+| `count`   | Max results (1-50, default 15)            |
+
+> `trending` is disabled by policy in many tenants; the tool says so plainly rather than
+> returning an error.
+
+### `ms_brief`
+
+One call that assembles a catch-up, composed from the tools above.
+
+With no arguments: today's meetings, unread mail, recent chats, open Planner tasks and
+yesterday's meeting transcripts. With `person`: who they are, plus your recent mail and
+chats involving them.
+
+| Parameter | Description                                        |
+| --------- | -------------------------------------------------- |
+| `person`  | Catch up on one person — name or email             |
+| `date`    | Date for the brief (YYYY-MM-DD, defaults to today) |
+| `count`   | Max items per section (1-15, default 5)            |
+
+A section that fails is marked as unavailable rather than taking the whole brief down.
 
 ### `ms_server_info`
 

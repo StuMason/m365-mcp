@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { formatTime, truncate, untrusted } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const calendarToolDefinition = {
@@ -5,16 +7,19 @@ export const calendarToolDefinition = {
   title: 'Calendar',
   description:
     "Fetch the user's Microsoft 365 calendar events. Defaults to today if no date params given. Can also list calendars or drill down into a specific event.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      date: { type: 'string', description: 'Fetch events for a specific date (YYYY-MM-DD)' },
-      start: { type: 'string', description: 'Start of date range (ISO 8601)' },
-      end: { type: 'string', description: 'End of date range (ISO 8601)' },
-      event_id: { type: 'string', description: 'Event ID for full detail drill-down' },
-      calendars: { type: 'boolean', description: 'List all calendars' },
-    },
-  },
+  inputSchema: z.object({
+    date: z.string().optional().describe('Fetch events for a specific date (YYYY-MM-DD)'),
+    start: z.string().optional().describe('Start of date range (ISO 8601)'),
+    end: z.string().optional().describe('End of date range (ISO 8601)'),
+    event_id: z.string().optional().describe('Event ID for full detail drill-down'),
+    calendars: z.boolean().optional().describe('List all calendars'),
+    compact: z
+      .boolean()
+      .optional()
+      .describe(
+        'Summarise each event to title, time, location, organiser and attendee count, omitting the body. Useful for scanning a day.',
+      ),
+  }),
   annotations: {
     title: 'Calendar',
     readOnlyHint: true,
@@ -79,6 +84,10 @@ function dateRangeForDay(dateStr: string): { start: string; end: string } | null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
   const date = new Date(`${dateStr}T00:00:00.000Z`);
   if (isNaN(date.getTime())) return null;
+  // JS rolls impossible dates forward rather than rejecting them: 2026-02-30
+  // becomes 2026-03-02, which would return March events labelled as February.
+  // Round-tripping is the only way to tell a real date from a rolled-over one.
+  if (date.toISOString().slice(0, 10) !== dateStr) return null;
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + 1);
   return { start: date.toISOString(), end: next.toISOString() };
@@ -135,7 +144,7 @@ const MAX_BODY_LENGTH = 500;
 /**
  * Formats a calendar event into readable multi-line text (summary view).
  */
-function formatEvent(event: CalendarEvent): string {
+function formatEvent(event: CalendarEvent, compact = false): string {
   const lines: string[] = [];
 
   lines.push(`## ${event.subject || 'Untitled'}`);
@@ -143,8 +152,8 @@ function formatEvent(event: CalendarEvent): string {
   if (event.isAllDay) {
     lines.push('Time: All day');
   } else {
-    const startTime = event.start?.dateTime || 'N/A';
-    const endTime = event.end?.dateTime || 'N/A';
+    const startTime = formatTime(event.start?.dateTime);
+    const endTime = formatTime(event.end?.dateTime);
     lines.push(`Time: ${startTime} - ${endTime}`);
   }
 
@@ -157,23 +166,24 @@ function formatEvent(event: CalendarEvent): string {
   }
 
   if (event.attendees && event.attendees.length > 0) {
-    const names = event.attendees
-      .map((a) => a.emailAddress?.name)
-      .filter(Boolean)
-      .join(', ');
-    if (names) {
-      lines.push(`Attendees: ${names}`);
+    const all = event.attendees.map((a) => a.emailAddress?.name).filter(Boolean);
+    if (all.length > 0) {
+      if (compact && all.length > 3) {
+        lines.push(
+          `Attendees: ${all.length} (${all.slice(0, 3).join(', ')} and ${all.length - 3} more)`,
+        );
+      } else {
+        lines.push(`Attendees: ${all.join(', ')}`);
+      }
     }
   }
 
-  if (event.body?.content) {
+  if (!compact && event.body?.content) {
     let text =
       event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
     text = stripTeamsBoilerplate(text);
     if (text) {
-      const truncated =
-        text.length > MAX_BODY_LENGTH ? text.slice(0, MAX_BODY_LENGTH) + '...' : text;
-      lines.push(truncated);
+      lines.push(untrusted('calendar event body', truncate(text, MAX_BODY_LENGTH)));
     }
   }
 
@@ -203,8 +213,8 @@ function formatEventDetail(event: EventDetail): string {
 
   lines.push(`## ${event.subject || 'Untitled'}`);
 
-  const startTime = event.start?.dateTime || 'N/A';
-  const endTime = event.end?.dateTime || 'N/A';
+  const startTime = formatTime(event.start?.dateTime);
+  const endTime = formatTime(event.end?.dateTime);
   lines.push(`Time: ${startTime} - ${endTime}`);
 
   if (event.location?.displayName) {
@@ -232,7 +242,9 @@ function formatEventDetail(event: EventDetail): string {
     const text =
       event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
     if (text) {
-      lines.push(`\n${text}`);
+      const organiser = event.organizer?.emailAddress?.name || 'unknown organiser';
+      lines.push('');
+      lines.push(untrusted(`calendar invite from ${organiser}`, text));
     }
   }
 
@@ -260,7 +272,14 @@ function formatEventDetail(event: EventDetail): string {
  */
 export async function executeCalendar(
   token: string,
-  args: { date?: string; start?: string; end?: string; event_id?: string; calendars?: boolean },
+  args: {
+    date?: string;
+    start?: string;
+    end?: string;
+    event_id?: string;
+    calendars?: boolean;
+    compact?: boolean;
+  },
 ): Promise<string> {
   // Mode 1: List calendars
   if (args.calendars) {
@@ -313,7 +332,9 @@ export async function executeCalendar(
 
   if (args.date) {
     const range = dateRangeForDay(args.date);
-    if (!range) return 'Error: Invalid date format. Expected YYYY-MM-DD.';
+    if (!range) {
+      return `Error: "${args.date}" is not a valid date. Expected YYYY-MM-DD, and the day must exist in that month.`;
+    }
     start = range.start;
     end = range.end;
   } else if (args.start && args.end) {
@@ -354,5 +375,5 @@ export async function executeCalendar(
     return 'No calendar events found for the specified date range.';
   }
 
-  return events.map(formatEvent).join('\n\n');
+  return events.map((e) => formatEvent(e, args.compact)).join('\n\n');
 }

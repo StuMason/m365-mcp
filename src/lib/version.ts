@@ -17,3 +17,23 @@ export function getVersion(): string {
     return 'unknown';
   }
 }
+
+export interface BuildInfo {
+  builtAt: string;
+  commit?: string;
+  branch?: string;
+  dirty?: boolean;
+}
+
+/**
+ * Reads the build fingerprint written by scripts/build-info.mjs.
+ * Returns null when running from source, or from a package built without git.
+ */
+export function getBuildInfo(): BuildInfo | null {
+  try {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    return JSON.parse(readFileSync(join(dir, '..', 'build-info.json'), 'utf-8')) as BuildInfo;
+  } catch {
+    return null;
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "@masonator/m365-mcp",
   "scope": "@masonator",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "description": "MCP server implementation for Microsoft 365 via Microsoft Graph API",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,7 +19,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/*.js",
+    "build": "tsc && node scripts/build-info.mjs && shx chmod +x dist/*.js",
     "dev": "tsc --watch",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --testPathIgnorePatterns=integration",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch --testPathIgnorePatterns=integration",
@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
     "@typescript-eslint/eslint-plugin": "^8.51.0",
@@ -77,6 +78,8 @@
     "*.ts": "eslint --fix"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/core": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.6.2"
   }
 }

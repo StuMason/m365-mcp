@@ -26,8 +26,10 @@ src/
 ├── lib/
 │   ├── auth.ts           # OAuth2 confidential client, token storage, refresh
 │   ├── version.ts        # single source of truth for the version (package.json)
+│   ├── format.ts        # shared timestamp/truncation/untrusted-content formatting
 │   ├── graph.ts          # graphFetch() wrapper with error mapping
 │   └── tools/
+│       ├── index.ts        # TOOL_DEFINITIONS — the single source of truth for the roster
 │       ├── auth-status.ts  # ms_auth_status — connection check + re-auth
 │       ├── profile.ts      # ms_profile — /me
 │       ├── calendar.ts     # ms_calendar — /me/calendarView
@@ -39,9 +41,12 @@ src/
 │       ├── teams.ts        # ms_teams — /me/joinedTeams → channels → messages
 │       ├── tasks.ts        # ms_tasks — /me/todo, /me/planner/tasks
 │       ├── people.ts       # ms_people — /users, /me/memberOf
+│       ├── search.ts       # ms_search — /search/query across M365
+│       ├── insights.ts     # ms_insights — /me/insights/{used,shared,trending}
+│       ├── brief.ts        # ms_brief — composes the tools above, no Graph calls
 │       ├── server-info.ts  # ms_server_info — version + registered tools
 │       └── transcripts.ts  # ms_transcripts — calendar → meeting ID → VTT
-└── __tests__/            # Jest tests (351 tests, ~95% coverage)
+└── __tests__/            # Jest tests (410 tests, ~96% coverage)
 ```
 
 ### Auth Flow
@@ -51,7 +56,15 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 ### Key Patterns
 
 - **graphFetch()** wraps all Graph API calls with typed results (`GraphResult<T>`) and maps HTTP errors to user-friendly messages
-- **Each tool** exports a `toolDefinition` and `execute` function. `index.ts` wires them into the MCP protocol.
+- **Each tool** exports a `toolDefinition` (with a zod `inputSchema`) and an `execute` function.
+  `index.ts` registers them with `server.registerTool`, which types each handler's args from
+  its own schema — that is why handlers are not held in one array.
+- **The roster** lives in `src/lib/tools/index.ts` (`TOOL_DEFINITIONS`). `ms_server_info`
+  counts it and `roster.test.ts` asserts `index.ts` registers exactly those tools and that
+  the "N tools" claims in README.md and CLAUDE.md agree. 0.7.0 shipped three lists that
+  disagreed; this is the guard against a repeat.
+- **`server-info.ts` takes the roster as an argument** rather than importing it. It is
+  itself in the roster, so importing it back is a module cycle (a real TDZ crash at startup).
 - **Transcript drill-down**: compound `{meetingId}/{transcriptId}` IDs for HATEOAS-style lazy loading of full VTT content
 - **Timezone**: uses system timezone by default, configurable via `MS365_MCP_TIMEZONE` env var
 - **Confidential clients**: when `MS365_MCP_CLIENT_SECRET` is set, the token and
@@ -64,13 +77,48 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 - **Graph query quirks**: `/me/joinedTeams` and `/teams/{id}/channels` reject `$top`
   and are trimmed client-side; `/users?$search` needs the `ConsistencyLevel: eventual`
   header.
+- **`/search/query` constraints** (verified live, do not "simplify"): only ONE
+  `entityRequest` per call, and entity types cannot be combined freely —
+  `message`+`chatMessage` is legal, `message`+`event` is not. `ms_search` therefore
+  issues one call per compatible group, in parallel. `person` needs `People.Read`,
+  which is not consented.
+- **`ms_brief` composes, it does not call Graph.** Every section is an existing
+  `execute*` function. Keep it that way: formatting and error handling belong with
+  the area they came from. A failing section degrades to a note rather than taking
+  the brief down.
+- **All output formatting goes through `lib/format.ts`.** `formatTime` for every
+  timestamp (never `toLocaleString()` — it produced US dates for a European user),
+  `truncate` for every cut, `untrusted()` for anything a third party wrote. Graph
+  returns two timestamp shapes and they need opposite handling: with
+  `Prefer: outlook.timezone` set, calendar/transcript times are bare wall-clock
+  already in our zone and must NOT be converted again; everything else is absolute.
+- **Dependent parameters are zod `.refine()` on the tool schema**, not runtime `if`s,
+  so the SDK rejects before the handler and the message is spec-shaped. Any new
+  parameter that requires another needs one.
+- **Dates must be round-tripped, not just shape-checked.** JS rolls `2026-02-30`
+  forward to `2026-03-02` rather than rejecting it, which silently returns the
+  wrong day.
+- **`ms_schedule` must send the configured timezone**, not `UTC`. It takes
+  wall-clock times; labelling them UTC shifted every query by the offset.
+- **Item insights are often disabled tenant-wide** (`trending` returns 403
+  `ItemInsightsDisabled`). That is policy, not a fault, so `ms_insights` explains it
+  instead of surfacing a raw error.
 
 ## Adding a New Tool
 
-1. Create `src/lib/tools/my-tool.ts` with exported `myToolDefinition` and `executeMyTool(token, args)`
-2. Register in `src/index.ts`: add to `ListToolsRequestSchema` array and `CallToolRequestSchema` switch
-3. Add tests in `src/__tests__/tools/my-tool.test.ts` (mock `graphFetch`)
-4. Update README.md
+1. Create `src/lib/tools/my-tool.ts` exporting `myToolDefinition` (name, title, description,
+   zod `inputSchema`, read-only `annotations`) and `executeMyTool(token, args)`
+2. Add the definition to `TOOL_DEFINITIONS` in `src/lib/tools/index.ts`
+3. Register it in `src/index.ts` with `server.registerTool(def.name, def, withToken(execute))`
+4. Add tests in `src/__tests__/tools/my-tool.test.ts` (mock `graphFetch`)
+5. Update the tool count and docs in README.md — `roster.test.ts` fails until they agree
+
+### Schema conventions
+
+Use zod 4. Give every numeric bound explicitly (`z.int().min(1).max(50)`): a bare `z.int()`
+publishes `minimum: -9007199254740991` into the tool schema. Out-of-range arguments are now
+rejected by the SDK before the handler runs, so keep the clamping in `execute*` anyway —
+tests call those functions directly.
 
 ## Testing
 

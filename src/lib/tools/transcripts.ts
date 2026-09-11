@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { formatTime, untrusted } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 const DEFAULT_CHUNK_SIZE = 10_000;
@@ -11,27 +13,28 @@ export const transcriptsToolDefinition = {
     'Without transcript_id: lists meetings with ~3000 char previews. ' +
     'With transcript_id: returns transcript content in chunks (default 10,000 chars). ' +
     'Use offset to paginate through long transcripts.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      date: { type: 'string', description: 'Date (YYYY-MM-DD)' },
-      start: { type: 'string', description: 'Start of date range (ISO 8601)' },
-      end: { type: 'string', description: 'End of date range (ISO 8601)' },
-      transcript_id: {
-        type: 'string',
-        description: 'Transcript ID for content drill-down (from a previous list call)',
-      },
-      offset: {
-        type: 'integer',
-        description:
-          'Character offset for pagination (default 0). Use the value from the previous response to continue reading.',
-      },
-      length: {
-        type: 'integer',
-        description: 'Max characters to return (default 10000, max 50000)',
-      },
-    },
-  },
+  inputSchema: z.object({
+    date: z.string().optional().describe('Date (YYYY-MM-DD)'),
+    start: z.string().optional().describe('Start of date range (ISO 8601)'),
+    end: z.string().optional().describe('End of date range (ISO 8601)'),
+    transcript_id: z
+      .string()
+      .optional()
+      .describe('Transcript ID for content drill-down (from a previous list call)'),
+    offset: z
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'Character offset for pagination (default 0). Use the value from the previous response to continue reading.',
+      ),
+    length: z
+      .int()
+      .min(1)
+      .max(50000)
+      .optional()
+      .describe('Max characters to return (default 10000, max 50000)'),
+  }),
   annotations: {
     title: 'Meeting Transcripts',
     readOnlyHint: true,
@@ -117,6 +120,9 @@ function dateRangeForDay(dateStr: string): { start: string; end: string } | null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
   const date = new Date(`${dateStr}T00:00:00.000Z`);
   if (isNaN(date.getTime())) return null;
+  // See calendar.ts: JS rolls 2026-02-30 forward to 2026-03-02 rather than
+  // rejecting it, which would return the wrong day's transcripts.
+  if (date.toISOString().slice(0, 10) !== dateStr) return null;
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + 1);
   return { start: date.toISOString(), end: next.toISOString() };
@@ -284,9 +290,24 @@ async function executeDrillDown(
 
   const totalLength = vtt.length;
 
+  // An offset past the end used to produce a negative "Remaining" and an empty
+  // body with no error, which reads as "the transcript is finished" rather than
+  // "you asked for a position that does not exist".
+  if (offset >= totalLength && totalLength > 0) {
+    return (
+      `Error: offset ${offset} is past the end of this transcript ` +
+      `(${totalLength} characters). Use an offset between 0 and ${totalLength - 1}.`
+    );
+  }
+
   // Short transcript — return it all, no pagination needed
   if (totalLength <= length) {
-    return `# Transcript: ${subject}\nLength: ${totalLength} chars (complete)\n\n${vtt}`;
+    return [
+      `# Transcript: ${subject}`,
+      `Length: ${totalLength} chars (complete)`,
+      '',
+      untrusted(`meeting transcript: ${subject}`, vtt),
+    ].join('\n');
   }
 
   // Paginated: slice the requested chunk
@@ -298,7 +319,7 @@ async function executeDrillDown(
   lines.push(`# Transcript: ${subject}`);
   lines.push(`Length: ${totalLength} chars | Showing: ${offset}–${end} | Remaining: ${remaining}`);
   lines.push('');
-  lines.push(chunk);
+  lines.push(untrusted(`meeting transcript: ${subject}`, chunk));
 
   if (remaining > 0) {
     lines.push('');
@@ -322,7 +343,9 @@ async function executeList(
 
   if (args.date) {
     const range = dateRangeForDay(args.date);
-    if (!range) return 'Error: Invalid date format. Expected YYYY-MM-DD.';
+    if (!range) {
+      return `Error: "${args.date}" is not a valid date. Expected YYYY-MM-DD, and the day must exist in that month.`;
+    }
     start = range.start;
     end = range.end;
   } else if (args.start && args.end) {
@@ -402,7 +425,7 @@ async function executeList(
 
     const lines: string[] = [];
     lines.push(`## ${event.subject || 'Untitled'}`);
-    lines.push(`Date: ${event.start?.dateTime || 'N/A'}`);
+    lines.push(`Date: ${formatTime(event.start?.dateTime)}`);
 
     const attendeeNames = event.attendees
       ?.map((a) => a.emailAddress?.name)
@@ -420,7 +443,7 @@ async function executeList(
   if (transcriptCount === 0) {
     // Meetings found but none have transcripts
     const meetingList = meetingEvents
-      .map((e) => `- ${e.subject || 'Untitled'} (${e.start?.dateTime || 'N/A'})`)
+      .map((e) => `- ${e.subject || 'Untitled'} (${formatTime(e.start?.dateTime)})`)
       .join('\n');
     return `Found ${meetingEvents.length} Teams meetings, but none have transcripts recorded.\n\n${meetingList}`;
   }
