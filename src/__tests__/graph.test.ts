@@ -334,3 +334,55 @@ describe('graphPost', () => {
     expect(callHeaders).toHaveProperty('X-Custom', 'value');
   });
 });
+
+describe('error sanitisation', () => {
+  it('replaces an Autodiscover exception with what the caller can act on', async () => {
+    const { sanitiseErrorText, sanitiseGraphError } = await import('../lib/graph.js');
+    const leak =
+      'Microsoft.Exchange.InfoWorker.Common.Availability.AutoDiscoverInvalidUserException: ' +
+      'https://ews.internal.example.com/autodiscover/autodiscover.svc server AB1CD02EF345678 LID: 33676';
+
+    expect(sanitiseErrorText(leak)).toBe('That mailbox could not be found.');
+
+    const wrapped = sanitiseGraphError(500, leak);
+    expect(wrapped).toContain('That mailbox could not be found.');
+    for (const secret of ['ews.internal.example.com', 'AB1CD02EF345678', 'LID', 'InfoWorker']) {
+      expect(wrapped).not.toContain(secret);
+    }
+  });
+
+  it('recognises the common Graph error codes', async () => {
+    const { sanitiseErrorText } = await import('../lib/graph.js');
+    expect(sanitiseErrorText('ErrorInvalidIdMalformed')).toContain('not valid');
+    expect(sanitiseErrorText('ErrorItemNotFound')).toContain('no longer exists');
+    expect(sanitiseErrorText('ErrorAccessDenied')).toContain('do not have access');
+    expect(sanitiseErrorText('TooManyRequests')).toContain('throttling');
+    expect(sanitiseErrorText('The specified recipient was not found.')).toContain(
+      'could not be found',
+    );
+  });
+
+  it('returns null for an error it does not recognise', async () => {
+    const { sanitiseErrorText } = await import('../lib/graph.js');
+    expect(sanitiseErrorText('something entirely new')).toBeNull();
+  });
+
+  it('surfaces only the code for an unrecognised error', async () => {
+    const { sanitiseGraphError } = await import('../lib/graph.js');
+    const body = JSON.stringify({
+      error: { code: 'SomeNewCode', message: 'internal detail here' },
+    });
+
+    const result = sanitiseGraphError(500, body);
+
+    expect(result).toContain('SomeNewCode');
+    expect(result).not.toContain('internal detail here');
+  });
+
+  it('handles an unparseable error body', async () => {
+    const { sanitiseGraphError } = await import('../lib/graph.js');
+    expect(sanitiseGraphError(503, 'not json at all')).toBe(
+      'Microsoft Graph returned an error (503).',
+    );
+  });
+});

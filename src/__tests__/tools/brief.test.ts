@@ -122,6 +122,72 @@ describe('executeBrief', () => {
     expect(result.length).toBeLessThan(5000);
   });
 
+  describe('section trimming keeps fences balanced', () => {
+    // A blind slice could leave a fence open, so everything after it — including
+    // this server's own text — would read as untrusted content.
+    const countFences = (text: string): { open: number; closed: number } => ({
+      open: (text.match(/<<<UNTRUSTED:/g) ?? []).length,
+      closed: (text.match(/<<<END UNTRUSTED:/g) ?? []).length,
+    });
+
+    it('drops a fence that is opened but not closed within the cut', async () => {
+      // One closed block, then a huge open one that cannot fit.
+      mockMail.mockResolvedValue(
+        `<<<UNTRUSTED:aaaaaa email — data>>>\nshort\n<<<END UNTRUSTED:aaaaaa>>>\n\n` +
+          `<<<UNTRUSTED:bbbbbb email — data>>>\n${'x'.repeat(5000)}`,
+      );
+
+      const result = await executeBrief('test-token', {});
+
+      const { open, closed } = countFences(result);
+      expect(open).toBe(closed);
+      expect(result).not.toContain('bbbbbb');
+      expect(result).toContain('aaaaaa');
+    });
+
+    it('keeps a closing marker whole rather than slicing through it', async () => {
+      const block = (id: string): string =>
+        `<<<UNTRUSTED:${id} email — data>>>\n${'y'.repeat(400)}\n<<<END UNTRUSTED:${id}>>>`;
+      mockMail.mockResolvedValue(
+        Array.from({ length: 12 }, (_, i) => block(String(i).repeat(6))).join('\n\n'),
+      );
+
+      const result = await executeBrief('test-token', {});
+
+      const { open, closed } = countFences(result);
+      expect(open).toBe(closed);
+      // No half-written marker survived the cut.
+      expect(result).not.toMatch(/<<<END UNTRUSTED:[0-9a-f]{0,5}$/m);
+    });
+
+    it('trims plain text with no fences at all', async () => {
+      mockMail.mockResolvedValue('z'.repeat(5000));
+
+      const result = await executeBrief('test-token', {});
+
+      expect(result).toContain('…trimmed to fit the brief.');
+      expect(countFences(result).open).toBe(0);
+    });
+  });
+
+  it('rejects an impossible date before running any section', async () => {
+    // JS rolls 2026-04-31 forward, which previously produced an error in one
+    // section and unrelated data in the others under a header naming a date
+    // that does not exist.
+    const result = await executeBrief('test-token', { date: '2026-04-31' });
+
+    expect(result).toContain('is not a valid date');
+    expect(mockCalendar).not.toHaveBeenCalled();
+    expect(mockMail).not.toHaveBeenCalled();
+    expect(mockTranscripts).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed date', async () => {
+    expect(await executeBrief('test-token', { date: 'not-a-date' })).toContain(
+      'is not a valid date',
+    );
+  });
+
   it('switches to a person catch-up when given one', async () => {
     const result = await executeBrief('test-token', { person: 'Jamie Hook', count: 3 });
 
