@@ -2,6 +2,7 @@ import { graphFetch } from '../graph.js';
 
 export const mailToolDefinition = {
   name: 'ms_mail',
+  title: 'Mail',
   description:
     "Read the user's recent emails from Microsoft 365. " +
     'Without message_id: lists emails with preview text. ' +
@@ -34,6 +35,13 @@ export const mailToolDefinition = {
         description: 'Filter shortcut: "unread", "flagged", "attachments", "important"',
       },
     },
+  },
+  annotations: {
+    title: 'Mail',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

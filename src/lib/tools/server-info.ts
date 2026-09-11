@@ -1,14 +1,20 @@
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { getVersion } from '../version.js';
 
 export const serverInfoToolDefinition = {
   name: 'ms_server_info',
+  title: 'Server Info',
   description:
     'Returns m365-mcp server metadata: version, available tools, and runtime info. Useful for debugging.',
   inputSchema: {
     type: 'object' as const,
     properties: {},
+  },
+  annotations: {
+    title: 'Server Info',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
   },
 };
 
@@ -22,19 +28,11 @@ const TOOL_NAMES = [
   'ms_transcripts',
   'ms_schedule',
   'ms_sharepoint',
+  'ms_teams',
+  'ms_tasks',
+  'ms_people',
   'ms_server_info',
 ];
-
-function getVersion(): string {
-  try {
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const pkgPath = join(dir, '..', '..', '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
-    return pkg.version ?? 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
 
 export function executeServerInfo(): string {
   const version = getVersion();

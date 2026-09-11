@@ -2,6 +2,7 @@ import { graphPost } from '../graph.js';
 
 export const scheduleToolDefinition = {
   name: 'ms_schedule',
+  title: 'Free/Busy Schedule',
   description:
     "Check people's availability / free-busy status for a given time window. Accepts one or more email addresses and returns their schedule with time slots showing free, busy, tentative, out of office, or working elsewhere.",
   inputSchema: {
@@ -30,6 +31,13 @@ export const scheduleToolDefinition = {
       },
     },
     required: ['emails'],
+  },
+  annotations: {
+    title: 'Free/Busy Schedule',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

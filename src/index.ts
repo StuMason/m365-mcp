@@ -4,6 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { loadAuthConfig, getAccessToken } from './lib/auth.js';
+import { getVersion } from './lib/version.js';
 import { authStatusToolDefinition, executeAuthStatus } from './lib/tools/auth-status.js';
 import { profileToolDefinition, executeProfile } from './lib/tools/profile.js';
 import { calendarToolDefinition, executeCalendar } from './lib/tools/calendar.js';
@@ -14,6 +15,9 @@ import { transcriptsToolDefinition, executeTranscripts } from './lib/tools/trans
 import { serverInfoToolDefinition, executeServerInfo } from './lib/tools/server-info.js';
 import { scheduleToolDefinition, executeSchedule } from './lib/tools/schedule.js';
 import { sharepointToolDefinition, executeSharepoint } from './lib/tools/sharepoint.js';
+import { teamsToolDefinition, executeTeams } from './lib/tools/teams.js';
+import { tasksToolDefinition, executeTasks } from './lib/tools/tasks.js';
+import { peopleToolDefinition, executePeople } from './lib/tools/people.js';
 
 // Validate env vars at startup
 try {
@@ -32,7 +36,18 @@ try {
   process.exit(1);
 }
 
-const server = new Server({ name: 'm365-mcp', version: '0.7.0' }, { capabilities: { tools: {} } });
+const server = new Server(
+  { name: 'm365-mcp', title: 'Microsoft 365', version: getVersion() },
+  {
+    capabilities: { tools: {} },
+    instructions:
+      'Read-only access to the signed-in user\u2019s own Microsoft 365 data via the Graph API. ' +
+      'Every tool acts as that user and cannot reach anyone else\u2019s mailbox, chats or files. ' +
+      'Start with ms_auth_status if a call reports an authentication problem. ' +
+      'Many tools are progressive: called with no arguments they list items with IDs, ' +
+      'and those IDs are passed back to drill into detail.',
+  },
+);
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -45,6 +60,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     transcriptsToolDefinition,
     scheduleToolDefinition,
     sharepointToolDefinition,
+    teamsToolDefinition,
+    tasksToolDefinition,
+    peopleToolDefinition,
     serverInfoToolDefinition,
   ],
 }));
@@ -159,6 +177,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             search?: string;
             site_id?: string;
             list_id?: string;
+            count?: number;
+          },
+        );
+        break;
+      case 'ms_teams':
+        result = await executeTeams(
+          token,
+          args as {
+            team_id?: string;
+            channel_id?: string;
+            message_id?: string;
+            count?: number;
+          },
+        );
+        break;
+      case 'ms_tasks':
+        result = await executeTasks(
+          token,
+          args as {
+            list_id?: string;
+            planner?: boolean;
+            include_completed?: boolean;
+            count?: number;
+          },
+        );
+        break;
+      case 'ms_people':
+        result = await executePeople(
+          token,
+          args as {
+            search?: string;
+            user?: string;
+            groups?: boolean;
             count?: number;
           },
         );
