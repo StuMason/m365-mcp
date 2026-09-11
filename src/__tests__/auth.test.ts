@@ -460,26 +460,64 @@ describe('refreshAccessToken', () => {
     delete process.env['MS365_MCP_REDIRECT_URL'];
   });
 
-  it('returns null and deletes tokens on HTTP error', async () => {
+  // A grant Azure calls invalid_grant is finished, so the session is discarded and
+  // the next call re-authenticates.
+  it('deletes tokens when Azure reports the grant is dead', async () => {
     saveTokens(sampleTokens);
 
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
       ok: false,
       status: 400,
-      text: async () => 'invalid_grant',
+      text: async () => JSON.stringify({ error: 'invalid_grant', error_codes: [700082] }),
     } as Response);
 
     const result = await refreshAccessToken(config, 'bad-refresh-token');
 
     expect(result).toBeNull();
     expect(stderrSpy).toHaveBeenCalled();
-
-    // Verify tokens were deleted
-    const saved = loadTokens();
-    expect(saved).toBeNull();
+    expect(loadTokens()).toBeNull();
   });
 
-  it('returns null and deletes tokens on network error', async () => {
+  // Everything else leaves the refresh token usable. Deleting it here cost a full
+  // browser re-auth for a request that would have worked on the next attempt.
+  it.each([
+    [
+      'a wrong scope on the request (AADSTS70000)',
+      { error: 'invalid_grant', error_codes: [70000] },
+    ],
+    ['an unconsented scope', { error: 'invalid_scope', error_codes: [65001] }],
+    ['a server fault', { error: 'temporarily_unavailable' }],
+  ])('keeps the tokens on %s', async (_label, body) => {
+    saveTokens(sampleTokens);
+
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify(body),
+    } as Response);
+
+    const result = await refreshAccessToken(config, 'refresh-token');
+
+    expect(result).toBeNull();
+    expect(loadTokens()).not.toBeNull();
+  });
+
+  it('keeps the tokens when the error body is not JSON', async () => {
+    saveTokens(sampleTokens);
+
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: async () => 'Bad Gateway',
+    } as Response);
+
+    expect(await refreshAccessToken(config, 'refresh-token')).toBeNull();
+    expect(loadTokens()).not.toBeNull();
+  });
+
+  // A thrown error is a transport failure — offline, DNS, TLS. The stored refresh
+  // token is almost certainly still good, so it is kept.
+  it('keeps the tokens on a network error', async () => {
     saveTokens(sampleTokens);
 
     global.fetch = jest.fn<typeof fetch>().mockRejectedValue(new Error('Network error'));
@@ -488,10 +526,7 @@ describe('refreshAccessToken', () => {
 
     expect(result).toBeNull();
     expect(stderrSpy).toHaveBeenCalled();
-
-    // Verify tokens were deleted
-    const saved = loadTokens();
-    expect(saved).toBeNull();
+    expect(loadTokens()).not.toBeNull();
   });
 
   it('returns null and logs non-Error throw values', async () => {

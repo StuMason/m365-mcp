@@ -13,7 +13,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![CI](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml)
 
-MCP server for Microsoft 365 via the Microsoft Graph API. 16 tools giving read-only access to your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
+MCP server for Microsoft 365 via the Microsoft Graph API. 17 tools covering your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
+
+Sixteen of the seventeen are read-only. The seventeenth, `ms_workiq`, is off unless `MS365_MCP_WORKIQ_SCOPE` is set, and can write — see [`ms_workiq`](#ms_workiq).
 
 ## Installation
 
@@ -55,6 +57,38 @@ On first use, the server opens your browser to sign in with Microsoft. After gra
 | `MS365_MCP_CLIENT_SECRET` | No       | Azure AD client secret (confidential clients only)                             |
 | `MS365_MCP_TIMEZONE`      | No       | Timezone for calendar (default: system timezone)                               |
 | `MS365_MCP_REDIRECT_URL`  | No       | OAuth redirect URI (default: dynamic port, `http://localhost:{port}/callback`) |
+| `MS365_MCP_CLIENT_TYPE`   | No       | Set to `spa` only for a Single-Page Application registration (see below)       |
+| `MS365_MCP_SCOPES`        | No       | Override the requested scopes, e.g. `https://graph.microsoft.com/.default`     |
+| `MS365_MCP_TOKEN_FILE`    | No       | Token filename within the config directory (default: `tokens.json`)            |
+| `MS365_MCP_WORKIQ_SCOPE`  | No       | Enables `ms_workiq`. Off by default because it is not read-only (see below)    |
+
+### `MS365_MCP_CLIENT_TYPE`
+
+Leave this unset unless your app registration uses the **Single-Page Application**
+platform. Only SPA registrations may redeem a token cross-origin; every other
+platform — Web, and "Mobile and desktop applications" — rejects the `Origin` header
+with `AADSTS9002326`. The absence of a client secret is not a reliable signal here,
+because a Mobile-and-desktop registration has no secret either.
+
+### `MS365_MCP_SCOPES`
+
+By default the server requests an explicit scope list, so a first-time consent
+prompt shows exactly what is being asked for.
+
+Set this to `https://graph.microsoft.com/.default offline_access` if your
+registration has more permissions configured than consented. Naming an unconsented
+scope fails the entire request with `AADSTS65001`, whereas `.default` asks for
+whatever is already consented and adapts on its own as that changes.
+
+Whatever the token ends up carrying, the tools adapt: a tool whose permission is
+missing explains what is unavailable and what still works, rather than returning a
+bare `403`. `ms_auth_status` lists exactly what was granted.
+
+### `MS365_MCP_TOKEN_FILE`
+
+Use this when running more than one app registration. One token file holds one
+registration's tokens, so signing in with a second client would otherwise silently
+evict the first.
 
 ## Azure AD Setup
 
@@ -225,6 +259,36 @@ chats involving them.
 | `count`   | Max items per section (1-15, default 5)            |
 
 A section that fails is marked as unavailable rather than taking the whole brief down.
+
+### `ms_workiq`
+
+**Not read-only. Off unless `MS365_MCP_WORKIQ_SCOPE` is set.**
+
+Reaches the Microsoft Work IQ agent over its remote MCP server. Work IQ is a
+separate OAuth resource from Graph, so it redeems its own access token from the
+same sign-in.
+
+With no parameters it lists the tools Work IQ exposes, marking which ones change
+data. `question` puts a question to the agent. `entity_urls` reads Graph paths
+**using your own M365 permissions rather than the app registration's consented
+scopes**, which is the main reason to enable it: paths the Graph token is refused,
+such as `/me/manager` and `/teams/{id}/channels`, are readable this way.
+`tool` plus `arguments` calls any Work IQ tool by name.
+
+Two things to understand before enabling it:
+
+- **The scope is all-or-nothing.** `WorkIQAgent.Ask` carries Work IQ's entire tool
+  surface, including `create_entity`, `update_entity`, `delete_entity` and
+  `do_action` (documented for sending mail). There is no read-only subset, so
+  holding the token means holding write capability regardless of which tools are
+  called. `ask` and `call_function` also delegate to an agent that can act.
+- **It gives prompt injection something to aim at.** This server wraps everything
+  a third party wrote in an untrusted-content fence precisely because mail, chat
+  and transcripts are attacker-controllable. Without Work IQ the worst case is a
+  false report; with it, an instruction smuggled into an email has an action
+  available to it. The fencing is mitigation, not a guarantee.
+
+Everything Work IQ returns is fenced, agent responses included.
 
 ### `ms_server_info`
 

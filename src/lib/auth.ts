@@ -481,7 +481,13 @@ export async function refreshAccessToken(
     if (!response.ok) {
       const errorText = await response.text();
       process.stderr.write(`Token refresh failed (${response.status}): ${errorText}\n`);
-      deleteTokens();
+      // Only discard the session when Azure says the grant itself is finished.
+      // Deleting on every failure meant a transient error, a wrong scope or a
+      // mismatched client forced a full browser re-auth for something that would
+      // have succeeded on the next attempt.
+      if (isDeadGrant(errorText)) {
+        deleteTokens();
+      }
       return null;
     }
 
@@ -502,9 +508,31 @@ export async function refreshAccessToken(
     saveTokens(tokenData);
     return tokenData;
   } catch (err) {
+    // A thrown error here is a transport failure — offline, DNS, TLS. The stored
+    // refresh token is very probably still good, so keep it.
     process.stderr.write(`Token refresh error: ${err instanceof Error ? err.message : err}\n`);
-    deleteTokens();
     return null;
+  }
+}
+
+/**
+ * True when a failed refresh means the stored grant can never work again.
+ *
+ * `invalid_grant` covers the revoked, expired and consent-withdrawn cases, where
+ * re-authentication is the only way forward. Everything else — a wrong scope, a
+ * mismatched client, a 5xx — leaves the refresh token usable, and AADSTS70000 in
+ * particular is returned for a malformed *request* rather than a dead token.
+ */
+export function isDeadGrant(errorText: string): boolean {
+  try {
+    const body = JSON.parse(errorText) as { error?: string; error_codes?: number[] };
+    if (body.error !== 'invalid_grant') return false;
+    // 70000 is "provided grant is invalid or malformed", which Azure also returns
+    // when the request asks for scopes the grant never had. Not proof of death.
+    const codes = body.error_codes ?? [];
+    return !codes.includes(70000);
+  } catch {
+    return false;
   }
 }
 
