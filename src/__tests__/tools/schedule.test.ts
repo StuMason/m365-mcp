@@ -57,7 +57,6 @@ describe('executeSchedule', () => {
       expect.objectContaining({
         schedules: ['alice@example.com'],
       }),
-      expect.any(Object),
     );
   });
 
@@ -145,11 +144,12 @@ describe('executeSchedule', () => {
       '/me/calendar/getSchedule',
       'test-token',
       expect.objectContaining({
-        startTime: expect.objectContaining({ dateTime: '2026-02-23T08:00:00' }),
-        endTime: expect.objectContaining({ dateTime: '2026-02-23T18:00:00' }),
+        // The window is wall-clock in the user's zone. Labelling it UTC shifted
+        // every query by the offset.
+        startTime: { dateTime: '2026-02-23T08:00:00', timeZone: 'Europe/London' },
+        endTime: { dateTime: '2026-02-23T18:00:00', timeZone: 'Europe/London' },
         availabilityViewInterval: 30,
       }),
-      expect.any(Object),
     );
   });
 

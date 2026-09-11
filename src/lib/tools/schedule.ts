@@ -145,11 +145,15 @@ export async function executeSchedule(token: string, args: ScheduleArgs): Promis
     availabilityViewInterval: interval,
   };
 
+  // The Prefer header matters here, not just on the request times. Without it
+  // getSchedule returns scheduleItems in UTC as offset-less strings — shapes that
+  // are indistinguishable from local wall-clock, so a 14:00 meeting came back as
+  // "13:00" and would be labelled with the local zone. With it, Graph returns the
+  // items already in the requested zone, matching ms_calendar.
   const result = await graphPost<typeof body, ScheduleResponse>(
     '/me/calendar/getSchedule',
     token,
     body,
-    { timezone: false },
   );
 
   if (!result.ok) {

@@ -1,3 +1,4 @@
+import { timezone } from './format.js';
 export interface GraphError {
   status: number;
   message: string;
@@ -32,9 +33,9 @@ function buildHeaders(token: string, options?: GraphFetchOptions): Record<string
   };
 
   if (options?.timezone !== false) {
-    const tz =
-      process.env.MS365_MCP_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    headers['Prefer'] = `outlook.timezone="${tz}"`;
+    // Same resolution as format.ts: formatTime treats offset-less Graph times as
+    // already being in this zone, so the two must not drift apart.
+    headers['Prefer'] = `outlook.timezone="${timezone()}"`;
   }
 
   if (options?.headers) {

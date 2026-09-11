@@ -96,7 +96,10 @@ export function formatTime(value?: string): string {
  * Renders just the date part, `YYYY-MM-DD`.
  */
 export function formatDate(value?: string): string {
-  return formatTime(value).slice(0, 10);
+  const formatted = formatTime(value);
+  // Only slice when we actually produced a YYYY-MM-DD… string; otherwise the
+  // first ten characters of unparseable input would look like a date.
+  return /^\d{4}-\d{2}-\d{2}/.test(formatted) ? formatted.slice(0, 10) : formatted;
 }
 
 /**
@@ -126,7 +129,12 @@ export function truncate(text: string, max: number): string {
  * tell the model what they mean.
  */
 export function untrusted(source: string, content: string): string {
-  const body = content.trim();
+  // Neutralise any attempt to close the boundary from inside it. Without this, a
+  // message containing the literal end marker escapes its own wrapper.
+  const body = content
+    .trim()
+    .replace(/<<</g, '\u2039\u2039\u2039')
+    .replace(/>>>/g, '\u203a\u203a\u203a');
   if (!body) {
     return '';
   }
