@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] - 2026-09-11
+## [1.0.0] - 2026-09-11
+
+First stable release. 13 read-only tools over the Microsoft Graph API, verified
+against a live tenant.
+
+### Breaking
+
+- **Tool arguments are now validated against the published schema.** Previously an
+  out-of-range `count` was silently clamped to the maximum; it now returns a clear
+  validation error (`count: Too big: expected number to be <=50`) before the handler
+  runs. Every numeric bound is published in the tool schema, so callers can get it
+  right first time. The defensive clamping inside each tool is retained for direct
+  callers. Any caller relying on the old tolerance needs to send in-range values.
+- `ms_auth_status` is no longer annotated `readOnlyHint` / `idempotentHint`. It writes
+  `tokens.json` and can open a browser, so by the spec's definition it modifies its
+  environment. Clients that auto-approve read-only tools will now prompt for it.
 
 ### Changed
 
@@ -15,11 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ~130-line dispatch switch and every `args as {...}` cast from `index.ts`. The negotiated
   wire protocol is unchanged at `2025-11-25` — both SDK lines top out there; v2 implements
   the newer 2026-07-28 spec revision's semantics.
-- **Tool arguments are now validated against the published schema.** Previously an
-  out-of-range `count` was silently clamped; it now returns a clear validation error
-  (`count: Too big: expected number to be <=50`) before the handler runs. Every numeric
-  bound is published in the tool schema, so clients can get it right first time. The
-  defensive clamping inside each tool is retained.
 - `ms_server_info` takes the tool roster as an argument instead of importing it, which
   also removes a module cycle.
 

@@ -11,9 +11,13 @@ export const authStatusToolDefinition = {
   inputSchema: z.object({}),
   annotations: {
     title: 'Connection Status',
-    readOnlyHint: true,
+    // Not read-only or idempotent, unlike every other tool here: this one writes
+    // tokens.json and can open a browser for sign-in, which is "modifying its
+    // environment" by the spec's definition. Clients that auto-approve read-only
+    // tools should prompt for this one.
+    readOnlyHint: false,
     destructiveHint: false,
-    idempotentHint: true,
+    idempotentHint: false,
     openWorldHint: true,
   },
 };
