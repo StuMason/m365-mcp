@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const chatToolDefinition = {
@@ -5,17 +6,19 @@ export const chatToolDefinition = {
   title: 'Teams Chats',
   description:
     "Read the user's recent Microsoft Teams chats. Without chat_id lists recent chats; with chat_id returns messages from that chat.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      chat_id: { type: 'string', description: 'Specific chat thread ID to read messages from' },
-      count: { type: 'integer', description: 'Number of chats/messages (1-25, default 10)' },
-      members: {
-        type: 'boolean',
-        description: 'When used with chat_id, list chat members instead of messages',
-      },
-    },
-  },
+  inputSchema: z.object({
+    chat_id: z.string().optional().describe('Specific chat thread ID to read messages from'),
+    count: z
+      .int()
+      .min(1)
+      .max(25)
+      .optional()
+      .describe('Number of chats/messages (1-25, default 10)'),
+    members: z
+      .boolean()
+      .optional()
+      .describe('When used with chat_id, list chat members instead of messages'),
+  }),
   annotations: {
     title: 'Teams Chats',
     readOnlyHint: true,

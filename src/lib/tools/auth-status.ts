@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { AuthConfig, TokenData } from '../../types/tokens.js';
 import { loadTokens, isTokenExpired, startAuthFlow, SCOPES } from '../auth.js';
 import { refreshAccessToken } from '../auth.js';
@@ -7,10 +8,7 @@ export const authStatusToolDefinition = {
   name: 'ms_auth_status',
   title: 'Connection Status',
   description: 'Check Microsoft 365 connection status. If not connected, opens browser to sign in.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {},
-  },
+  inputSchema: z.object({}),
   annotations: {
     title: 'Connection Status',
     readOnlyHint: true,

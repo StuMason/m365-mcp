@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphPost } from '../graph.js';
 
 export const scheduleToolDefinition = {
@@ -5,33 +6,13 @@ export const scheduleToolDefinition = {
   title: 'Free/Busy Schedule',
   description:
     "Check people's availability / free-busy status for a given time window. Accepts one or more email addresses and returns their schedule with time slots showing free, busy, tentative, out of office, or working elsewhere.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      emails: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Email addresses to check availability for (required)',
-      },
-      date: {
-        type: 'string',
-        description: 'Date to check (YYYY-MM-DD). Defaults to today.',
-      },
-      start: {
-        type: 'string',
-        description: 'Start time (HH:MM, 24h). Defaults to 08:00.',
-      },
-      end: {
-        type: 'string',
-        description: 'End time (HH:MM, 24h). Defaults to 18:00.',
-      },
-      interval: {
-        type: 'number',
-        description: 'Slot duration in minutes. Defaults to 30.',
-      },
-    },
-    required: ['emails'],
-  },
+  inputSchema: z.object({
+    emails: z.array(z.string()).describe('Email addresses to check availability for (required)'),
+    date: z.string().optional().describe('Date to check (YYYY-MM-DD). Defaults to today.'),
+    start: z.string().optional().describe('Start time (HH:MM, 24h). Defaults to 08:00.'),
+    end: z.string().optional().describe('End time (HH:MM, 24h). Defaults to 18:00.'),
+    interval: z.int().min(1).optional().describe('Slot duration in minutes. Defaults to 30.'),
+  }),
   annotations: {
     title: 'Free/Busy Schedule',
     readOnlyHint: true,

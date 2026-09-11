@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 const DEFAULT_CHUNK_SIZE = 10_000;
@@ -11,27 +12,28 @@ export const transcriptsToolDefinition = {
     'Without transcript_id: lists meetings with ~3000 char previews. ' +
     'With transcript_id: returns transcript content in chunks (default 10,000 chars). ' +
     'Use offset to paginate through long transcripts.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      date: { type: 'string', description: 'Date (YYYY-MM-DD)' },
-      start: { type: 'string', description: 'Start of date range (ISO 8601)' },
-      end: { type: 'string', description: 'End of date range (ISO 8601)' },
-      transcript_id: {
-        type: 'string',
-        description: 'Transcript ID for content drill-down (from a previous list call)',
-      },
-      offset: {
-        type: 'integer',
-        description:
-          'Character offset for pagination (default 0). Use the value from the previous response to continue reading.',
-      },
-      length: {
-        type: 'integer',
-        description: 'Max characters to return (default 10000, max 50000)',
-      },
-    },
-  },
+  inputSchema: z.object({
+    date: z.string().optional().describe('Date (YYYY-MM-DD)'),
+    start: z.string().optional().describe('Start of date range (ISO 8601)'),
+    end: z.string().optional().describe('End of date range (ISO 8601)'),
+    transcript_id: z
+      .string()
+      .optional()
+      .describe('Transcript ID for content drill-down (from a previous list call)'),
+    offset: z
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'Character offset for pagination (default 0). Use the value from the previous response to continue reading.',
+      ),
+    length: z
+      .int()
+      .min(1)
+      .max(50000)
+      .optional()
+      .describe('Max characters to return (default 10000, max 50000)'),
+  }),
   annotations: {
     title: 'Meeting Transcripts',
     readOnlyHint: true,

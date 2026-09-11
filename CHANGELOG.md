@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-11
+
+### Changed
+
+- **Migrated to MCP SDK v2** (`@modelcontextprotocol/core` + `@modelcontextprotocol/server`
+  2.0.0, replacing `@modelcontextprotocol/sdk` 1.x, which is the end of that line). Tools
+  are now registered with `server.registerTool` and zod 4 schemas, which removes the
+  ~130-line dispatch switch and every `args as {...}` cast from `index.ts`. The negotiated
+  wire protocol is unchanged at `2025-11-25` — both SDK lines top out there; v2 implements
+  the newer 2026-07-28 spec revision's semantics.
+- **Tool arguments are now validated against the published schema.** Previously an
+  out-of-range `count` was silently clamped; it now returns a clear validation error
+  (`count: Too big: expected number to be <=50`) before the handler runs. Every numeric
+  bound is published in the tool schema, so clients can get it right first time. The
+  defensive clamping inside each tool is retained.
+- `ms_server_info` takes the tool roster as an argument instead of importing it, which
+  also removes a module cycle.
+
+### Added
+
+- `src/lib/tools/index.ts` — `TOOL_DEFINITIONS`, a single source of truth for the tool
+  roster, replacing three separately hand-maintained lists.
+- `roster.test.ts` — fails the build if `index.ts` registers a different set of tools than
+  the roster declares, if any tool is not annotated read-only, or if the "N tools" claims
+  in README.md and CLAUDE.md disagree with reality. 0.7.0 shipped with all three lists out
+  of step; this makes that a test failure rather than a release note.
+
+### Fixed
+
+- README Node badge said `>=18`; the package has required `>=20` since 0.7.0, and the v2
+  SDK requires it too.
+
 ## [0.8.0] - 2026-09-11
 
 ### Added
