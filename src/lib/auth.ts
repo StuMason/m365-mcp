@@ -42,12 +42,19 @@ export const SCOPES = [
   'email',
   'offline_access',
   'User.Read',
-  'Calendars.Read',
+  'User.Read.All',
   'Mail.Read',
-  'Chat.Read',
+  'Calendars.Read',
   'Files.Read',
+  'Chat.Read',
+  'ChannelMessage.Read.All',
+  'Channel.ReadBasic.All',
+  'Team.ReadBasic.All',
+  'OnlineMeetings.Read',
   'OnlineMeetingTranscript.Read.All',
   'Sites.Read.All',
+  'Group.Read.All',
+  'Tasks.Read',
 ];
 
 /**
@@ -204,7 +211,10 @@ export async function exchangeCodeForTokens(
   const headers: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded',
   };
-  if (redirectUri) {
+  // Origin marks the request as cross-origin, which Azure only permits for
+  // SPA-platform clients. Confidential (secret-bearing) clients use Web-platform
+  // redirect URIs, where Azure rejects Origin with AADSTS9002326.
+  if (redirectUri && !config.clientSecret) {
     const origin = new URL(redirectUri).origin;
     headers['Origin'] = origin;
   }
@@ -315,6 +325,20 @@ export function waitForAuthCallback(
       resolve(callbackCode);
     });
 
+    httpServer.on('error', (err: NodeJS.ErrnoException) => {
+      clearTimeout(timeout);
+      if (err.code === 'EADDRINUSE') {
+        reject(
+          new Error(
+            `Port ${port} is already in use, so the sign-in callback cannot be received. ` +
+              `Free the port (lsof -i :${port}) and try again.`,
+          ),
+        );
+        return;
+      }
+      reject(new Error(`Could not start the sign-in callback server: ${err.message}`));
+    });
+
     httpServer.listen(port);
   });
 
@@ -384,6 +408,10 @@ export async function refreshAccessToken(
     grant_type: 'refresh_token',
     client_id: config.clientId,
     refresh_token: refreshToken,
+    // Request the full scope set explicitly: a token cached from an earlier
+    // release would otherwise keep refreshing with only the scopes it was
+    // originally granted.
+    scope: SCOPES.join(' '),
   };
   if (config.clientSecret) {
     params['client_secret'] = config.clientSecret;
@@ -395,7 +423,8 @@ export async function refreshAccessToken(
       'Content-Type': 'application/x-www-form-urlencoded',
     };
     const redirectUrl = process.env['MS365_MCP_REDIRECT_URL'];
-    if (redirectUrl) {
+    // See exchangeCodeForTokens: Origin is SPA-only; omit it for confidential clients.
+    if (redirectUrl && !config.clientSecret) {
       refreshHeaders['Origin'] = new URL(redirectUrl).origin;
     }
 

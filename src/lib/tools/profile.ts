@@ -2,6 +2,7 @@ import { graphFetch } from '../graph.js';
 
 export const profileToolDefinition = {
   name: 'ms_profile',
+  title: 'My Profile',
   description:
     "Fetch the user's Microsoft 365 profile. Optionally include manager, reports, groups, or photo.",
   inputSchema: {
@@ -13,6 +14,13 @@ export const profileToolDefinition = {
         description: 'Additional data to include: "manager", "reports", "groups", "photo"',
       },
     },
+  },
+  annotations: {
+    title: 'My Profile',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

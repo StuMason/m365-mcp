@@ -25,6 +25,7 @@ src/
 │   └── tokens.ts         # TokenData, AuthConfig interfaces
 ├── lib/
 │   ├── auth.ts           # OAuth2 confidential client, token storage, refresh
+│   ├── version.ts        # single source of truth for the version (package.json)
 │   ├── graph.ts          # graphFetch() wrapper with error mapping
 │   └── tools/
 │       ├── auth-status.ts  # ms_auth_status — connection check + re-auth
@@ -33,8 +34,14 @@ src/
 │       ├── mail.ts         # ms_mail — /me/messages
 │       ├── chat.ts         # ms_chat — /me/chats
 │       ├── files.ts        # ms_files — /me/drive
+│       ├── sharepoint.ts   # ms_sharepoint — /sites
+│       ├── schedule.ts     # ms_schedule — /me/calendar/getSchedule
+│       ├── teams.ts        # ms_teams — /me/joinedTeams → channels → messages
+│       ├── tasks.ts        # ms_tasks — /me/todo, /me/planner/tasks
+│       ├── people.ts       # ms_people — /users, /me/memberOf
+│       ├── server-info.ts  # ms_server_info — version + registered tools
 │       └── transcripts.ts  # ms_transcripts — calendar → meeting ID → VTT
-└── __tests__/            # Jest tests (144 tests, ~94% coverage)
+└── __tests__/            # Jest tests (351 tests, ~95% coverage)
 ```
 
 ### Auth Flow
@@ -47,6 +54,16 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 - **Each tool** exports a `toolDefinition` and `execute` function. `index.ts` wires them into the MCP protocol.
 - **Transcript drill-down**: compound `{meetingId}/{transcriptId}` IDs for HATEOAS-style lazy loading of full VTT content
 - **Timezone**: uses system timezone by default, configurable via `MS365_MCP_TIMEZONE` env var
+- **Confidential clients**: when `MS365_MCP_CLIENT_SECRET` is set, the token and
+  refresh requests must NOT send an `Origin` header. Azure allows cross-origin
+  token redemption only for SPA-platform registrations and otherwise fails with
+  `AADSTS9002326`. Do not "restore" that header.
+- **Scopes**: `SCOPES` in `auth.ts` must stay a subset of what is actually consented
+  on the app registration. Requesting an unconsented scope produces a consent prompt
+  the user cannot complete.
+- **Graph query quirks**: `/me/joinedTeams` and `/teams/{id}/channels` reject `$top`
+  and are trimmed client-side; `/users?$search` needs the `ConsistencyLevel: eventual`
+  header.
 
 ## Adding a New Tool
 
@@ -72,7 +89,7 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 
 - Conventional commits: `feat:`, `fix:`, `chore:`
 - Pre-commit hooks: eslint + prettier via lint-staged
-- GPG signing via 1Password (use `--no-gpg-sign` if agent unavailable)
+- Commits are SSH-signed (`commit.gpgsign=true` globally). Never disable signing.
 
 ## Publishing
 

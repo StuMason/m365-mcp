@@ -2,6 +2,7 @@ import { graphFetch } from '../graph.js';
 
 export const chatToolDefinition = {
   name: 'ms_chat',
+  title: 'Teams Chats',
   description:
     "Read the user's recent Microsoft Teams chats. Without chat_id lists recent chats; with chat_id returns messages from that chat.",
   inputSchema: {
@@ -14,6 +15,13 @@ export const chatToolDefinition = {
         description: 'When used with chat_id, list chat members instead of messages',
       },
     },
+  },
+  annotations: {
+    title: 'Teams Chats',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

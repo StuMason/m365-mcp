@@ -2,6 +2,7 @@ import { graphFetch } from '../graph.js';
 
 export const sharepointToolDefinition = {
   name: 'ms_sharepoint',
+  title: 'SharePoint',
   description:
     'Search SharePoint sites, list site lists, or browse list items. Without parameters, searches all accessible sites. Provide site_id to see its lists, or site_id + list_id to browse items.',
   inputSchema: {
@@ -24,6 +25,13 @@ export const sharepointToolDefinition = {
         description: 'Max results to return (1-50, default 10)',
       },
     },
+  },
+  annotations: {
+    title: 'SharePoint',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

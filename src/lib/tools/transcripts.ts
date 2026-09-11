@@ -5,6 +5,7 @@ const MAX_CHUNK_SIZE = 50_000;
 
 export const transcriptsToolDefinition = {
   name: 'ms_transcripts',
+  title: 'Meeting Transcripts',
   description:
     'Fetch meeting transcripts from Microsoft Teams. ' +
     'Without transcript_id: lists meetings with ~3000 char previews. ' +
@@ -30,6 +31,13 @@ export const transcriptsToolDefinition = {
         description: 'Max characters to return (default 10000, max 50000)',
       },
     },
+  },
+  annotations: {
+    title: 'Meeting Transcripts',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

@@ -2,6 +2,7 @@ import { graphFetch } from '../graph.js';
 
 export const filesToolDefinition = {
   name: 'ms_files',
+  title: 'OneDrive Files',
   description: "Browse or search the user's OneDrive files.",
   inputSchema: {
     type: 'object' as const,
@@ -15,6 +16,13 @@ export const filesToolDefinition = {
       },
       shared: { type: 'boolean', description: 'List files shared with me' },
     },
+  },
+  annotations: {
+    title: 'OneDrive Files',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 

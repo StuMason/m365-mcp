@@ -1,7 +1,7 @@
 {
   "name": "@masonator/m365-mcp",
   "scope": "@masonator",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "MCP server implementation for Microsoft 365 via Microsoft Graph API",
   "type": "module",
   "main": "./dist/index.js",
@@ -69,13 +69,14 @@
     "node": ">=20"
   },
   "overrides": {
-    "handlebars": "^4.7.9"
+    "handlebars": "^4.7.9",
+    "smol-toml": "^1.8.0"
   },
   "lint-staged": {
     "*.{ts,js,json,md,yaml,yml}": "prettier --write",
     "*.ts": "eslint --fix"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0"
+    "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }
