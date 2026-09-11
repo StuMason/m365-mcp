@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AuthConfig, TokenData } from '../../types/tokens.js';
 import { loadTokens, isTokenExpired, startAuthFlow, SCOPES } from '../auth.js';
+import { grantedScopes } from '../scopes.js';
 import { refreshAccessToken } from '../auth.js';
 import { graphFetch } from '../graph.js';
 
@@ -68,7 +69,12 @@ function formatConnectedStatus(
     lines.push(`User: ${profile.displayName} (${profile.email})`);
   }
   lines.push(`Token expires: ${tokens.expires_at}`);
-  lines.push(`Scopes: ${tokens.scopes || SCOPES.join(' ')}`);
+  // The token's own scp claim, not the response's scope field: that is what the
+  // per-tool scope guards read, and a status that disagreed with them would send
+  // people looking for a permission the tools had already decided was absent.
+  const granted = grantedScopes(tokens.access_token);
+  const scopes = granted ? [...granted].sort().join(' ') : tokens.scopes || SCOPES.join(' ');
+  lines.push(`Scopes: ${scopes}`);
   return lines.join('\n');
 }
 

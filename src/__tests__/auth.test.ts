@@ -295,7 +295,7 @@ describe('SCOPES', () => {
     expect(SCOPES).toContain('Files.Read');
     expect(SCOPES).toContain('OnlineMeetingTranscript.Read.All');
     expect(SCOPES).toContain('Sites.Read.All');
-    // The scopes consented on the primary registration, in full.
+    // The full default scope list, as sent on the authorize request.
     expect(SCOPES).toContain('User.Read.All');
     expect(SCOPES).toContain('ChannelMessage.Read.All');
     expect(SCOPES).toContain('Channel.ReadBasic.All');
@@ -425,8 +425,9 @@ describe('refreshAccessToken', () => {
     delete process.env['MS365_MCP_REDIRECT_URL'];
   });
 
-  it('sends the Origin header on refresh for a public client', async () => {
+  it('sends the Origin header on refresh only for an SPA client', async () => {
     process.env['MS365_MCP_REDIRECT_URL'] = 'http://localhost:9999/callback';
+    process.env['MS365_MCP_CLIENT_TYPE'] = 'spa';
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
@@ -437,6 +438,25 @@ describe('refreshAccessToken', () => {
     const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
     const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
     expect((init.headers as Record<string, string>)['Origin']).toBe('http://localhost:9999');
+    delete process.env['MS365_MCP_REDIRECT_URL'];
+    delete process.env['MS365_MCP_CLIENT_TYPE'];
+  });
+
+  // A "Mobile and desktop applications" registration has no secret either, and
+  // rejects Origin the same way a Web-platform one does — verified live against
+  // a Mobile-and-desktop registration, which failed AADSTS9002326 until this was removed.
+  it('omits the Origin header on refresh for a secretless non-SPA client', async () => {
+    process.env['MS365_MCP_REDIRECT_URL'] = 'http://localhost:9999/callback';
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
+    } as Response);
+
+    await refreshAccessToken({ clientId: 'public-id', tenantId: 'tenant' }, 'rt');
+
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Origin']).toBeUndefined();
     delete process.env['MS365_MCP_REDIRECT_URL'];
   });
 
@@ -641,7 +661,8 @@ describe('exchangeCodeForTokens', () => {
     expect((init.headers as Record<string, string>)['Origin']).toBeUndefined();
   });
 
-  it('sends the Origin header for a public client', async () => {
+  it('sends the Origin header for an SPA client', async () => {
+    process.env['MS365_MCP_CLIENT_TYPE'] = 'spa';
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
@@ -653,6 +674,21 @@ describe('exchangeCodeForTokens', () => {
     const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
     const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
     expect((init.headers as Record<string, string>)['Origin']).toBe('http://localhost:9999');
+    delete process.env['MS365_MCP_CLIENT_TYPE'];
+  });
+
+  it('omits the Origin header for a secretless non-SPA client', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '' }),
+    } as Response);
+
+    const publicConfig: AuthConfig = { clientId: 'public-id', tenantId: 'tenant' };
+    await exchangeCodeForTokens(publicConfig, 'code', 'http://localhost:9999/callback');
+
+    const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+    const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Origin']).toBeUndefined();
   });
 });
 
