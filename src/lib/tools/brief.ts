@@ -92,7 +92,11 @@ export async function executeBrief(
 
   const sections = await Promise.all([
     section(`Meetings on ${date}`, () => executeCalendar(token, { date, compact: true })),
-    section('Unread mail', () => executeMail(token, { filter: 'unread', count })),
+    section('Unread mail', () =>
+      // Inbox, not /me/messages: the latter spans Archive and Deleted Items too,
+      // reporting ~1450 unread where the inbox holds 25.
+      executeMail(token, { filter: 'unread', folder: 'Inbox', count }),
+    ),
     section('Recent chats', () => executeChat(token, { count })),
     section('Open Planner tasks', () => executeTasks(token, { planner: true, count })),
     section(`Meeting transcripts from ${yesterday}`, () =>

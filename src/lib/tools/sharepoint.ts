@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const sharepointToolDefinition = {
@@ -6,21 +7,28 @@ export const sharepointToolDefinition = {
   title: 'SharePoint',
   description:
     'Search SharePoint sites, list site lists, or browse list items. Without parameters, searches all accessible sites. Provide site_id to see its lists, or site_id + list_id to browse items.',
-  inputSchema: z.object({
-    search: z
-      .string()
-      .optional()
-      .describe("Search query for finding sites (default '*' for all sites)"),
-    site_id: z
-      .string()
-      .optional()
-      .describe('Site ID to list its lists, or combined with list_id to browse items'),
-    list_id: z
-      .string()
-      .optional()
-      .describe('List ID (requires site_id) to browse list items with expanded fields'),
-    count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 10)'),
-  }),
+  inputSchema: z
+    .object({
+      search: z
+        .string()
+        .optional()
+        .describe("Search query for finding sites (default '*' for all sites)"),
+      site_id: z
+        .string()
+        .optional()
+        .describe('Site ID to list its lists, or combined with list_id to browse items'),
+      list_id: z
+        .string()
+        .optional()
+        .describe('List ID (requires site_id) to browse list items with expanded fields'),
+      count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 10)'),
+    })
+    .refine((a) => !a.list_id || !!a.site_id, {
+      // Without this, list_id alone silently fell through to "search all sites" and
+      // returned a site list that looks like a successful drill-down.
+      message: 'list_id requires site_id — pass the site the list belongs to.',
+      path: ['list_id'],
+    }),
   annotations: {
     title: 'SharePoint',
     readOnlyHint: true,
@@ -101,7 +109,7 @@ function formatList(list: SiteList): string {
     lines.push(`Template: ${list.list.template}`);
   }
   if (list.lastModifiedDateTime) {
-    lines.push(`Modified: ${new Date(list.lastModifiedDateTime).toLocaleString()}`);
+    lines.push(`Modified: ${formatTime(list.lastModifiedDateTime)}`);
   }
   if (list.webUrl) {
     lines.push(`URL: ${list.webUrl}`);

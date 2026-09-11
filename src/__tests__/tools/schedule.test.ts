@@ -213,7 +213,7 @@ describe('executeSchedule', () => {
     });
 
     expect(result).toContain('Untitled');
-    expect(result).toContain('? to ?');
+    expect(result).toContain('unknown to unknown');
     expect(result).toContain('[unknown]');
   });
 
