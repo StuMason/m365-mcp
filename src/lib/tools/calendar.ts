@@ -12,6 +12,12 @@ export const calendarToolDefinition = {
     end: z.string().optional().describe('End of date range (ISO 8601)'),
     event_id: z.string().optional().describe('Event ID for full detail drill-down'),
     calendars: z.boolean().optional().describe('List all calendars'),
+    compact: z
+      .boolean()
+      .optional()
+      .describe(
+        'Summarise each event to title, time, location, organiser and attendee count, omitting the body. Useful for scanning a day.',
+      ),
   }),
   annotations: {
     title: 'Calendar',
@@ -133,7 +139,7 @@ const MAX_BODY_LENGTH = 500;
 /**
  * Formats a calendar event into readable multi-line text (summary view).
  */
-function formatEvent(event: CalendarEvent): string {
+function formatEvent(event: CalendarEvent, compact = false): string {
   const lines: string[] = [];
 
   lines.push(`## ${event.subject || 'Untitled'}`);
@@ -155,16 +161,19 @@ function formatEvent(event: CalendarEvent): string {
   }
 
   if (event.attendees && event.attendees.length > 0) {
-    const names = event.attendees
-      .map((a) => a.emailAddress?.name)
-      .filter(Boolean)
-      .join(', ');
-    if (names) {
-      lines.push(`Attendees: ${names}`);
+    const all = event.attendees.map((a) => a.emailAddress?.name).filter(Boolean);
+    if (all.length > 0) {
+      if (compact && all.length > 3) {
+        lines.push(
+          `Attendees: ${all.length} (${all.slice(0, 3).join(', ')} and ${all.length - 3} more)`,
+        );
+      } else {
+        lines.push(`Attendees: ${all.join(', ')}`);
+      }
     }
   }
 
-  if (event.body?.content) {
+  if (!compact && event.body?.content) {
     let text =
       event.body.contentType === 'html' ? stripHtml(event.body.content) : event.body.content;
     text = stripTeamsBoilerplate(text);
@@ -258,7 +267,14 @@ function formatEventDetail(event: EventDetail): string {
  */
 export async function executeCalendar(
   token: string,
-  args: { date?: string; start?: string; end?: string; event_id?: string; calendars?: boolean },
+  args: {
+    date?: string;
+    start?: string;
+    end?: string;
+    event_id?: string;
+    calendars?: boolean;
+    compact?: boolean;
+  },
 ): Promise<string> {
   // Mode 1: List calendars
   if (args.calendars) {
@@ -352,5 +368,5 @@ export async function executeCalendar(
     return 'No calendar events found for the specified date range.';
   }
 
-  return events.map(formatEvent).join('\n\n');
+  return events.map((e) => formatEvent(e, args.compact)).join('\n\n');
 }

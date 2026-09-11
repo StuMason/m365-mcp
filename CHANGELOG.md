@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-09-11
 
-First stable release. 13 read-only tools over the Microsoft Graph API, verified
+First stable release. 16 read-only tools over the Microsoft Graph API, verified
 against a live tenant.
 
 ### Breaking
@@ -35,6 +35,19 @@ against a live tenant.
 
 ### Added
 
+- **`ms_search`** — one call across mail, Teams chats, calendar, OneDrive and SharePoint
+  via the unified `/search/query` endpoint, with KQL support. Graph allows only one
+  entity request per call and rejects most entity-type combinations, so this issues one
+  call per compatible group in parallel and merges the results.
+- **`ms_insights`** — documents recently used or shared with the user. Item insights are
+  disabled tenant-wide in many organisations, which the tool explains rather than
+  surfacing a raw 403.
+- **`ms_brief`** — assembles a catch-up in one call: today's meetings, unread mail,
+  recent chats, open Planner tasks and yesterday's transcripts. With `person`, it
+  switches to a catch-up on that person instead. Composed entirely from the other
+  tools; a failing section degrades to a note rather than taking the brief down.
+- `ms_calendar` gains `compact`, which summarises each event and omits the body —
+  Teams invites carry a wall of dial-in boilerplate that swamps a day's summary.
 - `src/lib/tools/index.ts` — `TOOL_DEFINITIONS`, a single source of truth for the tool
   roster, replacing three separately hand-maintained lists.
 - `roster.test.ts` — fails the build if `index.ts` registers a different set of tools than

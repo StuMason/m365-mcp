@@ -13,6 +13,9 @@ import { sharepointToolDefinition, executeSharepoint } from './tools/sharepoint.
 import { teamsToolDefinition, executeTeams } from './tools/teams.js';
 import { tasksToolDefinition, executeTasks } from './tools/tasks.js';
 import { peopleToolDefinition, executePeople } from './tools/people.js';
+import { searchToolDefinition, executeSearch } from './tools/search.js';
+import { insightsToolDefinition, executeInsights } from './tools/insights.js';
+import { briefToolDefinition, executeBrief } from './tools/brief.js';
 import { serverInfoToolDefinition, executeServerInfo } from './tools/server-info.js';
 import { toolNames } from './tools/index.js';
 
@@ -113,6 +116,13 @@ export function buildServer(): McpServer {
   server.registerTool(teamsToolDefinition.name, teamsToolDefinition, withToken(executeTeams));
   server.registerTool(tasksToolDefinition.name, tasksToolDefinition, withToken(executeTasks));
   server.registerTool(peopleToolDefinition.name, peopleToolDefinition, withToken(executePeople));
+  server.registerTool(searchToolDefinition.name, searchToolDefinition, withToken(executeSearch));
+  server.registerTool(
+    insightsToolDefinition.name,
+    insightsToolDefinition,
+    withToken(executeInsights),
+  );
+  server.registerTool(briefToolDefinition.name, briefToolDefinition, withToken(executeBrief));
 
   // ms_server_info touches nothing outside the process.
   server.registerTool(serverInfoToolDefinition.name, serverInfoToolDefinition, () =>
