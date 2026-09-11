@@ -117,7 +117,7 @@ function formatChatMessage(msg: ChatMessage): string {
   if (msg.body?.contentType === 'html') {
     content = stripHtml(content);
   }
-  const body = untrusted(`chat message from ${sender}`, content) || '(empty message)';
+  const body = untrusted(`chat message from ${sender}`, content) || '[no text content]';
   return `**${sender}** (${time}):\n${body}`;
 }
 
@@ -146,7 +146,10 @@ function formatChatListing(chat: Chat): string {
     const sender =
       p.from?.user?.displayName || p.from?.application?.displayName || 'Unknown sender';
     const raw = p.body?.content || '';
-    const preview = raw ? truncate(stripHtml(raw), 300) : '(no preview)';
+    // A message can be an attachment, a reaction or a system event with no text.
+    // Rendering nothing reads as an empty message rather than a non-text one.
+    const stripped = raw ? truncate(stripHtml(raw), 300) : '';
+    const preview = stripped || (raw ? '[no text content]' : '(no preview)');
     const time = p.createdDateTime ? formatTime(p.createdDateTime) : '';
     lines.push(`Last message from ${sender}${time ? ` at ${time}` : ''}:`);
     lines.push(untrusted(`chat message from ${sender}`, preview) || preview);

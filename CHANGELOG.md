@@ -35,7 +35,15 @@ Round two, from a second Desktop pass:
 - **Graph error bodies leaked internals**: EWS endpoints, .NET exception class
   names, backend server names and diagnostic LIDs. They are mapped to what the
   caller can act on ("That mailbox could not be found"), with the raw body on
-  stderr.
+  stderr. This covers both paths — `getSchedule` reports per-mailbox failures
+  inside a 200 response, so those never reached the HTTP error handler and were
+  still leaking an Autodiscover exception after the first fix.
+- **Empty chat messages** rendered as a blank line after the sender, reading as
+  an empty message rather than one with no text (an attachment or reaction).
+  Marked `[no text content]` now.
+- **A trimmed brief section contradicted its own header**, which could say
+  "Showing 15 of 25" while emitting four. The trim marker now states that counts
+  above it describe the full result.
 - `<ddd/>`, Graph's elision marker, leaked into search snippets.
 - Search result fences are labelled by filename or sender rather than the raw
   Graph type, which is the provenance that matters in a warning.

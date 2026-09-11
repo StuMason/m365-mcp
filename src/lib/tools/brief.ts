@@ -60,7 +60,11 @@ function trimSection(body: string): string {
     safe = endOfMarker === -1 ? cut.slice(0, lastEnd) : cut.slice(0, endOfMarker + 3);
   }
 
-  return `${safe.trimEnd()}\n\n…trimmed. Use the underlying tool for the full list.`;
+  return (
+    `${safe.trimEnd()}\n\n` +
+    '…trimmed to fit the brief. Any count above describes the full result, not what ' +
+    'is shown here — call the underlying tool for the rest.'
+  );
 }
 
 /**
