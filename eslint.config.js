@@ -22,6 +22,13 @@ export default tseslint.config(
     },
   },
   {
+    // Build scripts are plain JS run by node, not part of the typed source.
+    files: ['scripts/**/*.mjs'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
+  {
     ignores: ['dist/', 'node_modules/', 'coverage/'],
   },
 );

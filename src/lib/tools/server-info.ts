@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getVersion } from '../version.js';
+import { getVersion, getBuildInfo } from '../version.js';
 
 export const serverInfoToolDefinition = {
   name: 'ms_server_info',
@@ -21,6 +21,14 @@ export function executeServerInfo(names: string[]): string {
   const lines: string[] = [];
 
   lines.push(`# m365-mcp v${version}`);
+  const build = getBuildInfo();
+  if (build) {
+    // Two builds of the same unreleased version are otherwise indistinguishable,
+    // which makes "am I testing the fix?" unanswerable during a review cycle.
+    const dirty = build.dirty ? ' (uncommitted changes)' : '';
+    lines.push(`Build: ${build.commit ?? 'unknown'} on ${build.branch ?? 'unknown'}${dirty}`);
+    lines.push(`Built: ${build.builtAt}`);
+  }
   lines.push('');
   lines.push(`Node: ${process.version}`);
   lines.push(`Platform: ${process.platform} ${process.arch}`);

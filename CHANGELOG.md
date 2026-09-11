@@ -12,6 +12,40 @@ against a live tenant.
 
 ### Fixed — correctness
 
+Round two, from a second Desktop pass:
+
+- **`ms_brief` stitched an error to unrelated data.** A bad date produced a
+  validation error in the meetings section, today's mail and chats, and a
+  transcripts section for a rolled-over date — all under a header naming the
+  invalid date. The date is now validated once at the entry point and the whole
+  call fails.
+- **The untrusted fence could be closed early.** The marker was static and
+  predictable. Each fence now carries a random id, content is neutralised before
+  wrapping, and only a matching id closes a block. Reflected caller input (a
+  search query in a "no results" message, a folder name in an error) is escaped
+  too — a model can be induced to search for attacker-chosen text.
+- **Trimming a brief section could leave a fence open**, so everything after it
+  read as untrusted content. Sections now trim back to a completed block.
+- **Calendar event bodies were only fenced in list mode.** Detail mode is the
+  surface where anyone in the org can put text in your context by sending an
+  invite; it is fenced now, attributed to the organiser.
+- **`ms_mail` and `ms_brief` disagreed about "unread"** — 1450 across every
+  folder against 25 in the Inbox, the difference being Deleted Items. A filter
+  now defaults to the Inbox in both; pass `folder: "all"` for the old behaviour.
+- **Graph error bodies leaked internals**: EWS endpoints, .NET exception class
+  names, backend server names and diagnostic LIDs. They are mapped to what the
+  caller can act on ("That mailbox could not be found"), with the raw body on
+  stderr.
+- `<ddd/>`, Graph's elision marker, leaked into search snippets.
+- Search result fences are labelled by filename or sender rather than the raw
+  Graph type, which is the provenance that matters in a warning.
+
+### Added — diagnostics
+
+- `ms_server_info` reports the build: short commit, branch, whether the tree was
+  dirty, and when it was built. Two builds of the same unreleased version were
+  otherwise indistinguishable during a review cycle.
+
 These came out of hands-on testing in Claude Desktop. Each one produced
 confidently wrong output rather than an error, which is the worst failure mode
 for a tool an assistant reads from.

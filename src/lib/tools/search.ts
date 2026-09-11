@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { formatTime, untrusted } from '../format.js';
+import { formatTime, untrusted, echo } from '../format.js';
 import { graphPost } from '../graph.js';
 
 export const searchToolDefinition = {
@@ -83,10 +83,14 @@ interface SearchResponse {
  * Strips the <c0></c0> hit-highlight markers Graph wraps around matched terms.
  */
 export function stripHighlights(text: string): string {
-  return text
-    .replace(/<\/?c\d+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    text
+      .replace(/<\/?c\d+>/g, '')
+      // <ddd/> is Graph's elision marker for the omitted middle of a snippet.
+      .replace(/<ddd\s*\/?>/gi, '…')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 /**
@@ -123,7 +127,12 @@ function formatHit(hit: SearchHit): string {
 
   const summary = stripHighlights(hit.summary || r.bodyPreview || r.description || '');
   if (summary) {
-    lines.push(untrusted(who ? `${type} from ${who}` : type, summary));
+    const provenance = who
+      ? `${type} from ${who}`
+      : r.name || r.displayName
+        ? `${type}: ${r.name || r.displayName}`
+        : type;
+    lines.push(untrusted(provenance, summary));
   }
 
   const url = r.webUrl || r.webLink;
@@ -194,7 +203,7 @@ export async function executeSearch(
   }
 
   if (sections.length === 0) {
-    const nothing = `No results for "${args.query}".`;
+    const nothing = `No results for "${echo(args.query)}".`;
     return errors.length > 0 ? `${nothing}\n\nErrors:\n${errors.join('\n')}` : nothing;
   }
 

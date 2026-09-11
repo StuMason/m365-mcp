@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { formatTime, untrusted } from '../format.js';
+import { formatTime, untrusted, echo } from '../format.js';
 import { graphFetch } from '../graph.js';
 
 export const mailToolDefinition = {
@@ -24,7 +24,9 @@ export const mailToolDefinition = {
       folder: z
         .string()
         .optional()
-        .describe('Folder name or ID to list messages from (e.g. "Inbox", "Sent Items")'),
+        .describe(
+          'Folder name or ID (e.g. "Inbox", "Sent Items"). With filter, defaults to Inbox — pass "all" to search every folder including Deleted Items.',
+        ),
       folders: z.boolean().optional().describe('List all mail folders with unread counts'),
       attachments: z
         .boolean()
@@ -383,7 +385,7 @@ async function resolveFolderId(
 
   const folders = result.data.value;
   if (!folders || folders.length === 0) {
-    return { ok: false, error: `Folder "${folderNameOrId}" not found.` };
+    return { ok: false, error: `Folder "${echo(folderNameOrId)}" not found.` };
   }
 
   return { ok: true, id: folders[0].id || folderNameOrId };
@@ -465,15 +467,20 @@ async function executeFiltered(
     return `Error: Unknown filter "${filter}". Valid filters: ${Object.keys(FILTER_MAP).join(', ')}`;
   }
 
+  // Default a filter to the Inbox. /me/messages spans Deleted Items and Junk, so
+  // "unread" across everything counted 1450 where the inbox held 25 — a number
+  // nobody wants, and one that made ms_mail and ms_brief disagree. Pass
+  // folder="all" to opt back into every folder.
+  const target = folder ?? 'Inbox';
   let base = '/me/messages';
   let scope = 'all folders';
-  if (folder) {
-    const resolved = await resolveFolderId(token, folder);
+  if (target !== 'all') {
+    const resolved = await resolveFolderId(token, target);
     if (!resolved.ok) {
       return `Error: ${resolved.error}`;
     }
     base = `/me/mailFolders/${encodeURIComponent(resolved.id)}/messages`;
-    scope = folder;
+    scope = target;
   }
 
   const path = `${base}?$top=${count}&$count=true&$select=${select}&$filter=${filterExpr}`;

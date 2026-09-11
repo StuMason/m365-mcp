@@ -46,6 +46,51 @@ function buildHeaders(token: string, options?: GraphFetchOptions): Record<string
 }
 
 /**
+ * Known Graph error codes mapped to what the caller can actually act on.
+ * Anything matched here is reported without the raw body.
+ */
+const ERROR_HINTS: Array<[RegExp, string]> = [
+  [/AutoDiscover|Availability(Config|Service)|InfoWorker/i, 'That mailbox could not be found.'],
+  [/ErrorInvalidIdMalformed|invalid.*id|ErrorInvalidId\b/i, 'That ID is not valid for this tool.'],
+  [/ItemNotFound|ErrorItemNotFound/i, 'That item no longer exists, or you cannot see it.'],
+  [/ErrorAccessDenied|Forbidden/i, 'You do not have access to that item.'],
+  [
+    /ThrottledRequest|TooManyRequests/i,
+    'Microsoft Graph is throttling requests — try again shortly.',
+  ],
+  [/MailboxNotEnabled|ErrorNonExistentMailbox/i, 'That user has no mailbox.'],
+];
+
+/**
+ * Turns a raw Graph error body into something safe and useful.
+ *
+ * Graph error bodies carry internal detail with no value to the caller: EWS
+ * endpoints, .NET exception class names, backend server names and diagnostic
+ * LIDs. That is needless disclosure through an assistant's context, so the raw
+ * body goes to stderr and the caller gets the intent.
+ */
+export function sanitiseGraphError(status: number, body: string): string {
+  for (const [pattern, hint] of ERROR_HINTS) {
+    if (pattern.test(body)) {
+      return `${hint} (Graph error ${status})`;
+    }
+  }
+
+  // Unrecognised: surface the code only, never the surrounding prose.
+  let code: string | undefined;
+  try {
+    code = (JSON.parse(body) as { error?: { code?: string } }).error?.code;
+  } catch {
+    code = undefined;
+  }
+
+  process.stderr.write(`Graph API error (${status}): ${body}\n`);
+  return code
+    ? `Microsoft Graph returned an error (${status}, ${code}).`
+    : `Microsoft Graph returned an error (${status}).`;
+}
+
+/**
  * Handle a successful or error response from the Graph API.
  */
 async function handleResponse<T>(response: Response): Promise<GraphResult<T>> {
@@ -84,7 +129,7 @@ async function handleResponse<T>(response: Response): Promise<GraphResult<T>> {
       } catch {
         text = '(unable to read error response body)';
       }
-      message = `Graph API error (${status}): ${text}`;
+      message = sanitiseGraphError(status, text);
       break;
     }
   }
