@@ -9,11 +9,11 @@
 
 [![npm version](https://img.shields.io/npm/v/@masonator/m365-mcp.svg)](https://www.npmjs.com/package/@masonator/m365-mcp)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
 [![CI](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/StuMason/m365-mcp/actions/workflows/ci.yml)
 
-MCP server for Microsoft 365 via the Microsoft Graph API. Read-only access to your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
+MCP server for Microsoft 365 via the Microsoft Graph API. 13 tools giving read-only access to your profile, calendar, email, Teams chats and channels, OneDrive files, SharePoint, tasks, the org directory, and meeting transcripts from any MCP client.
 
 ## Installation
 

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const calendarToolDefinition = {
@@ -5,16 +6,13 @@ export const calendarToolDefinition = {
   title: 'Calendar',
   description:
     "Fetch the user's Microsoft 365 calendar events. Defaults to today if no date params given. Can also list calendars or drill down into a specific event.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      date: { type: 'string', description: 'Fetch events for a specific date (YYYY-MM-DD)' },
-      start: { type: 'string', description: 'Start of date range (ISO 8601)' },
-      end: { type: 'string', description: 'End of date range (ISO 8601)' },
-      event_id: { type: 'string', description: 'Event ID for full detail drill-down' },
-      calendars: { type: 'boolean', description: 'List all calendars' },
-    },
-  },
+  inputSchema: z.object({
+    date: z.string().optional().describe('Fetch events for a specific date (YYYY-MM-DD)'),
+    start: z.string().optional().describe('Start of date range (ISO 8601)'),
+    end: z.string().optional().describe('End of date range (ISO 8601)'),
+    event_id: z.string().optional().describe('Event ID for full detail drill-down'),
+    calendars: z.boolean().optional().describe('List all calendars'),
+  }),
   annotations: {
     title: 'Calendar',
     readOnlyHint: true,

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { getVersion } from '../version.js';
 
 export const serverInfoToolDefinition = {
@@ -5,10 +6,7 @@ export const serverInfoToolDefinition = {
   title: 'Server Info',
   description:
     'Returns m365-mcp server metadata: version, available tools, and runtime info. Useful for debugging.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {},
-  },
+  inputSchema: z.object({}),
   annotations: {
     title: 'Server Info',
     readOnlyHint: true,
@@ -18,23 +16,7 @@ export const serverInfoToolDefinition = {
   },
 };
 
-const TOOL_NAMES = [
-  'ms_auth_status',
-  'ms_profile',
-  'ms_calendar',
-  'ms_mail',
-  'ms_chat',
-  'ms_files',
-  'ms_transcripts',
-  'ms_schedule',
-  'ms_sharepoint',
-  'ms_teams',
-  'ms_tasks',
-  'ms_people',
-  'ms_server_info',
-];
-
-export function executeServerInfo(): string {
+export function executeServerInfo(names: string[]): string {
   const version = getVersion();
   const lines: string[] = [];
 
@@ -43,8 +25,8 @@ export function executeServerInfo(): string {
   lines.push(`Node: ${process.version}`);
   lines.push(`Platform: ${process.platform} ${process.arch}`);
   lines.push('');
-  lines.push(`## Tools (${TOOL_NAMES.length})`);
-  for (const name of TOOL_NAMES) {
+  lines.push(`## Tools (${names.length})`);
+  for (const name of names) {
     lines.push(`- ${name}`);
   }
   lines.push('');

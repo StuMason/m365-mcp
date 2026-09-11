@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const peopleToolDefinition = {
@@ -5,28 +6,17 @@ export const peopleToolDefinition = {
   title: 'People Directory',
   description:
     'Look people up in the organisation directory. Use search to resolve a name to an email address (the input ms_schedule needs), user to read one person’s details plus their manager and direct reports, or groups to list the groups and teams the signed-in user belongs to.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      search: {
-        type: 'string',
-        description: 'Name or partial name to search the directory for',
-      },
-      user: {
-        type: 'string',
-        description:
-          'User principal name (email) or object ID to fetch details, manager and direct reports for',
-      },
-      groups: {
-        type: 'boolean',
-        description: "List the signed-in user's group and team memberships",
-      },
-      count: {
-        type: 'integer',
-        description: 'Max results to return (1-50, default 20)',
-      },
-    },
-  },
+  inputSchema: z.object({
+    search: z.string().optional().describe('Name or partial name to search the directory for'),
+    user: z
+      .string()
+      .optional()
+      .describe(
+        'User principal name (email) or object ID to fetch details, manager and direct reports for',
+      ),
+    groups: z.boolean().optional().describe("List the signed-in user's group and team memberships"),
+    count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 20)'),
+  }),
   annotations: {
     title: 'People Directory',
     readOnlyHint: true,

@@ -1,8 +1,9 @@
 import { executeServerInfo } from '../../lib/tools/server-info.js';
+import { toolNames } from '../../lib/tools/index.js';
 
 describe('executeServerInfo', () => {
   it('returns server version and metadata', () => {
-    const result = executeServerInfo();
+    const result = executeServerInfo(toolNames());
 
     expect(result).toContain('# m365-mcp v');
     expect(result).toContain(`Node: ${process.version}`);
@@ -10,7 +11,7 @@ describe('executeServerInfo', () => {
   });
 
   it('lists all available tools', () => {
-    const result = executeServerInfo();
+    const result = executeServerInfo(toolNames());
 
     expect(result).toContain('ms_auth_status');
     expect(result).toContain('ms_profile');
@@ -26,7 +27,7 @@ describe('executeServerInfo', () => {
   });
 
   it('shows environment variable status without exposing values', () => {
-    const result = executeServerInfo();
+    const result = executeServerInfo(toolNames());
 
     expect(result).toContain('MS365_MCP_CLIENT_ID:');
     expect(result).toContain('MS365_MCP_TENANT_ID:');
@@ -38,7 +39,7 @@ describe('executeServerInfo', () => {
     const original = process.env['MS365_MCP_TIMEZONE'];
     try {
       process.env['MS365_MCP_TIMEZONE'] = 'Europe/London';
-      const result = executeServerInfo();
+      const result = executeServerInfo(toolNames());
       expect(result).toContain('MS365_MCP_TIMEZONE: Europe/London');
     } finally {
       if (original === undefined) {
@@ -53,7 +54,7 @@ describe('executeServerInfo', () => {
     const original = process.env['MS365_MCP_REDIRECT_URL'];
     try {
       delete process.env['MS365_MCP_REDIRECT_URL'];
-      const result = executeServerInfo();
+      const result = executeServerInfo(toolNames());
       expect(result).toContain('MS365_MCP_REDIRECT_URL: default (dynamic port)');
     } finally {
       if (original === undefined) {

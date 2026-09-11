@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const mailToolDefinition = {
@@ -9,33 +10,29 @@ export const mailToolDefinition = {
     'With message_id: returns the full email body. ' +
     'Use folders: true to list mail folders, folder to read from a specific folder, ' +
     'attachments with message_id to list attachments, or filter for quick filters.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      search: { type: 'string', description: 'Search keyword to filter emails (KQL)' },
-      count: { type: 'integer', description: 'Number of emails to return (1-25, default 10)' },
-      message_id: {
-        type: 'string',
-        description: 'Email message ID for full body drill-down',
-      },
-      folder: {
-        type: 'string',
-        description: 'Folder name or ID to list messages from (e.g. "Inbox", "Sent Items")',
-      },
-      folders: {
-        type: 'boolean',
-        description: 'List all mail folders with unread counts',
-      },
-      attachments: {
-        type: 'boolean',
-        description: 'When used with message_id, list attachments instead of body',
-      },
-      filter: {
-        type: 'string',
-        description: 'Filter shortcut: "unread", "flagged", "attachments", "important"',
-      },
-    },
-  },
+  inputSchema: z.object({
+    search: z.string().optional().describe('Search keyword to filter emails (KQL)'),
+    count: z
+      .int()
+      .min(1)
+      .max(25)
+      .optional()
+      .describe('Number of emails to return (1-25, default 10)'),
+    message_id: z.string().optional().describe('Email message ID for full body drill-down'),
+    folder: z
+      .string()
+      .optional()
+      .describe('Folder name or ID to list messages from (e.g. "Inbox", "Sent Items")'),
+    folders: z.boolean().optional().describe('List all mail folders with unread counts'),
+    attachments: z
+      .boolean()
+      .optional()
+      .describe('When used with message_id, list attachments instead of body'),
+    filter: z
+      .string()
+      .optional()
+      .describe('Filter shortcut: "unread", "flagged", "attachments", "important"'),
+  }),
   annotations: {
     title: 'Mail',
     readOnlyHint: true,

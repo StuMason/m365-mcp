@@ -28,6 +28,7 @@ src/
 │   ├── version.ts        # single source of truth for the version (package.json)
 │   ├── graph.ts          # graphFetch() wrapper with error mapping
 │   └── tools/
+│       ├── index.ts        # TOOL_DEFINITIONS — the single source of truth for the roster
 │       ├── auth-status.ts  # ms_auth_status — connection check + re-auth
 │       ├── profile.ts      # ms_profile — /me
 │       ├── calendar.ts     # ms_calendar — /me/calendarView
@@ -41,7 +42,7 @@ src/
 │       ├── people.ts       # ms_people — /users, /me/memberOf
 │       ├── server-info.ts  # ms_server_info — version + registered tools
 │       └── transcripts.ts  # ms_transcripts — calendar → meeting ID → VTT
-└── __tests__/            # Jest tests (351 tests, ~95% coverage)
+└── __tests__/            # Jest tests (356 tests, ~95% coverage)
 ```
 
 ### Auth Flow
@@ -51,7 +52,15 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 ### Key Patterns
 
 - **graphFetch()** wraps all Graph API calls with typed results (`GraphResult<T>`) and maps HTTP errors to user-friendly messages
-- **Each tool** exports a `toolDefinition` and `execute` function. `index.ts` wires them into the MCP protocol.
+- **Each tool** exports a `toolDefinition` (with a zod `inputSchema`) and an `execute` function.
+  `index.ts` registers them with `server.registerTool`, which types each handler's args from
+  its own schema — that is why handlers are not held in one array.
+- **The roster** lives in `src/lib/tools/index.ts` (`TOOL_DEFINITIONS`). `ms_server_info`
+  counts it and `roster.test.ts` asserts `index.ts` registers exactly those tools and that
+  the "N tools" claims in README.md and CLAUDE.md agree. 0.7.0 shipped three lists that
+  disagreed; this is the guard against a repeat.
+- **`server-info.ts` takes the roster as an argument** rather than importing it. It is
+  itself in the roster, so importing it back is a module cycle (a real TDZ crash at startup).
 - **Transcript drill-down**: compound `{meetingId}/{transcriptId}` IDs for HATEOAS-style lazy loading of full VTT content
 - **Timezone**: uses system timezone by default, configurable via `MS365_MCP_TIMEZONE` env var
 - **Confidential clients**: when `MS365_MCP_CLIENT_SECRET` is set, the token and
@@ -67,10 +76,19 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 
 ## Adding a New Tool
 
-1. Create `src/lib/tools/my-tool.ts` with exported `myToolDefinition` and `executeMyTool(token, args)`
-2. Register in `src/index.ts`: add to `ListToolsRequestSchema` array and `CallToolRequestSchema` switch
-3. Add tests in `src/__tests__/tools/my-tool.test.ts` (mock `graphFetch`)
-4. Update README.md
+1. Create `src/lib/tools/my-tool.ts` exporting `myToolDefinition` (name, title, description,
+   zod `inputSchema`, read-only `annotations`) and `executeMyTool(token, args)`
+2. Add the definition to `TOOL_DEFINITIONS` in `src/lib/tools/index.ts`
+3. Register it in `src/index.ts` with `server.registerTool(def.name, def, withToken(execute))`
+4. Add tests in `src/__tests__/tools/my-tool.test.ts` (mock `graphFetch`)
+5. Update the tool count and docs in README.md — `roster.test.ts` fails until they agree
+
+### Schema conventions
+
+Use zod 4. Give every numeric bound explicitly (`z.int().min(1).max(50)`): a bare `z.int()`
+publishes `minimum: -9007199254740991` into the tool schema. Out-of-range arguments are now
+rejected by the SDK before the handler runs, so keep the clamping in `execute*` anyway —
+tests call those functions directly.
 
 ## Testing
 

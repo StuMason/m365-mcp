@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const tasksToolDefinition = {
@@ -5,27 +6,18 @@ export const tasksToolDefinition = {
   title: 'To Do & Planner',
   description:
     'Read Microsoft To Do and Planner tasks. Without parameters lists To Do task lists; with list_id returns the tasks in that list; with planner=true returns Planner tasks assigned to the user.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      list_id: {
-        type: 'string',
-        description: 'To Do list ID to read its tasks',
-      },
-      planner: {
-        type: 'boolean',
-        description: 'Return Planner tasks assigned to the user instead of To Do lists',
-      },
-      include_completed: {
-        type: 'boolean',
-        description: 'Include completed tasks (default false — only open tasks are returned)',
-      },
-      count: {
-        type: 'integer',
-        description: 'Max results to return (1-50, default 25)',
-      },
-    },
-  },
+  inputSchema: z.object({
+    list_id: z.string().optional().describe('To Do list ID to read its tasks'),
+    planner: z
+      .boolean()
+      .optional()
+      .describe('Return Planner tasks assigned to the user instead of To Do lists'),
+    include_completed: z
+      .boolean()
+      .optional()
+      .describe('Include completed tasks (default false \u2014 only open tasks are returned)'),
+    count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 25)'),
+  }),
   annotations: {
     title: 'To Do & Planner',
     readOnlyHint: true,

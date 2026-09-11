@@ -1,22 +1,20 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 
 export const filesToolDefinition = {
   name: 'ms_files',
   title: 'OneDrive Files',
   description: "Browse or search the user's OneDrive files.",
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      path: { type: 'string', description: "Folder path (e.g. '/Documents')" },
-      search: { type: 'string', description: 'Search across OneDrive' },
-      count: { type: 'integer', description: 'Max items (1-50, default 20)' },
-      item_id: {
-        type: 'string',
-        description: 'File/folder ID for detailed metadata and download URL',
-      },
-      shared: { type: 'boolean', description: 'List files shared with me' },
-    },
-  },
+  inputSchema: z.object({
+    path: z.string().optional().describe("Folder path (e.g. '/Documents')"),
+    search: z.string().optional().describe('Search across OneDrive'),
+    count: z.int().min(1).max(50).optional().describe('Max items (1-50, default 20)'),
+    item_id: z
+      .string()
+      .optional()
+      .describe('File/folder ID for detailed metadata and download URL'),
+    shared: z.boolean().optional().describe('List files shared with me'),
+  }),
   annotations: {
     title: 'OneDrive Files',
     readOnlyHint: true,

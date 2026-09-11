@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { graphFetch } from '../graph.js';
 import { stripHtml } from './chat.js';
 
@@ -6,28 +7,23 @@ export const teamsToolDefinition = {
   title: 'Teams & Channels',
   description:
     'Browse Microsoft Teams the user has joined. Without parameters lists joined teams; with team_id lists that team’s channels; with team_id + channel_id returns recent channel messages. Distinct from ms_chat, which covers private/group chats rather than team channels.',
-  inputSchema: {
-    type: 'object' as const,
-    properties: {
-      team_id: {
-        type: 'string',
-        description: 'Team ID to list its channels, or combined with channel_id to read messages',
-      },
-      channel_id: {
-        type: 'string',
-        description: 'Channel ID (requires team_id) to read recent messages from that channel',
-      },
-      message_id: {
-        type: 'string',
-        description:
-          'Message ID (requires team_id + channel_id) to read the replies on that message thread',
-      },
-      count: {
-        type: 'integer',
-        description: 'Max results to return (1-50, default 20)',
-      },
-    },
-  },
+  inputSchema: z.object({
+    team_id: z
+      .string()
+      .optional()
+      .describe('Team ID to list its channels, or combined with channel_id to read messages'),
+    channel_id: z
+      .string()
+      .optional()
+      .describe('Channel ID (requires team_id) to read recent messages from that channel'),
+    message_id: z
+      .string()
+      .optional()
+      .describe(
+        'Message ID (requires team_id + channel_id) to read the replies on that message thread',
+      ),
+    count: z.int().min(1).max(50).optional().describe('Max results to return (1-50, default 20)'),
+  }),
   annotations: {
     title: 'Teams & Channels',
     readOnlyHint: true,
