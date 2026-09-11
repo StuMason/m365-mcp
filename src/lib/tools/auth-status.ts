@@ -5,10 +5,18 @@ import { graphFetch } from '../graph.js';
 
 export const authStatusToolDefinition = {
   name: 'ms_auth_status',
+  title: 'Connection Status',
   description: 'Check Microsoft 365 connection status. If not connected, opens browser to sign in.',
   inputSchema: {
     type: 'object' as const,
     properties: {},
+  },
+  annotations: {
+    title: 'Connection Status',
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
 };
 
