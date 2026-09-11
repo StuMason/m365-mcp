@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatTime, untrusted } from '../format.js';
 import { graphPost } from '../graph.js';
 
 export const searchToolDefinition = {
@@ -117,12 +118,12 @@ function formatHit(hit: SearchHit): string {
 
   const when = r.receivedDateTime || r.start?.dateTime || r.lastModifiedDateTime;
   if (when) {
-    lines.push(`Date: ${new Date(when).toLocaleString()}`);
+    lines.push(`Date: ${formatTime(when)}`);
   }
 
   const summary = stripHighlights(hit.summary || r.bodyPreview || r.description || '');
   if (summary) {
-    lines.push(summary);
+    lines.push(untrusted(who ? `${type} from ${who}` : type, summary));
   }
 
   const url = r.webUrl || r.webLink;

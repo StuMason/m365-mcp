@@ -206,8 +206,11 @@ describe('executeMail', () => {
 
     expect(result).toContain('## Email 1');
     expect(result).toContain('## Email 2');
+    // A count header now precedes the messages, so the messages are the parts
+    // after it rather than the whole split.
     const parts = result.split('\n\n');
-    expect(parts.length).toBe(2);
+    expect(parts[0]).toMatch(/^\d+ messages? \(/);
+    expect(parts.length).toBe(3);
   });
 
   it('passes timezone false to graphFetch', async () => {
