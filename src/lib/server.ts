@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { loadAuthConfig, getAccessToken } from './auth.js';
 import { getVersion } from './version.js';
 import { authStatusToolDefinition, executeAuthStatus } from './tools/auth-status.js';
+import { workIqToolDefinition, executeWorkIq } from './tools/workiq.js';
 import { profileToolDefinition, executeProfile } from './tools/profile.js';
 import { calendarToolDefinition, executeCalendar } from './tools/calendar.js';
 import { mailToolDefinition, executeMail } from './tools/mail.js';
@@ -132,6 +133,16 @@ export function buildServer(): McpServer {
     withToken(executeInsights),
   );
   server.registerTool(briefToolDefinition.name, briefToolDefinition, withToken(executeBrief));
+
+  // Takes the config rather than a token: Work IQ is a separate OAuth resource and
+  // redeems its own access token, so the Graph token is no use to it.
+  server.registerTool(workIqToolDefinition.name, workIqToolDefinition, async (args) => {
+    try {
+      return ok(await executeWorkIq(loadAuthConfig(), args));
+    } catch (error) {
+      return failed(error);
+    }
+  });
 
   // ms_server_info touches nothing outside the process.
   server.registerTool(serverInfoToolDefinition.name, serverInfoToolDefinition, () =>

@@ -24,6 +24,8 @@ jest.unstable_mockModule('../../lib/auth.js', () => ({
     throw new Error('auth flow not expected in roster tests');
   },
   refreshAccessToken: async (): Promise<null> => null,
+  // ms_workiq redeems its own token and writes the rotated refresh token back.
+  saveTokens: (): void => {},
   SCOPES: [],
 }));
 
@@ -66,17 +68,36 @@ describe('tool roster', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
+  // Two deliberate exceptions, and no others. ms_auth_status writes tokens.json and
+  // can open a browser. ms_workiq reaches a scope that carries create/update/delete
+  // and an agent that can send mail. Anything else appearing here is a mistake, and
+  // a tool that quietly stopped being read-only is exactly what this guards.
+  const NOT_READ_ONLY = ['ms_auth_status', 'ms_workiq'];
+
   it('declares every data tool read-only and non-destructive', () => {
     for (const def of TOOL_DEFINITIONS) {
-      // ms_auth_status is the deliberate exception: it writes tokens.json and can
-      // open a browser, so it is not read-only and not idempotent.
-      const expectedReadOnly = def.name !== 'ms_auth_status';
+      const expectedReadOnly = !NOT_READ_ONLY.includes(def.name);
       expect({ name: def.name, readOnly: def.annotations.readOnlyHint }).toEqual({
         name: def.name,
         readOnly: expectedReadOnly,
       });
-      expect(def.annotations.destructiveHint).toBe(false);
+      // Only ms_workiq can actually destroy something.
+      expect({ name: def.name, destructive: def.annotations.destructiveHint }).toEqual({
+        name: def.name,
+        destructive: def.name === 'ms_workiq',
+      });
     }
+  });
+
+  it('marks ms_workiq as the one tool that can change data', () => {
+    const workiq = TOOL_DEFINITIONS.find((d) => d.name === 'ms_workiq');
+    expect(workiq).toBeDefined();
+    expect(workiq!.annotations.readOnlyHint).toBe(false);
+    expect(workiq!.annotations.destructiveHint).toBe(true);
+    expect(workiq!.annotations.idempotentHint).toBe(false);
+    // The description has to say so: a client that shows only descriptions still
+    // needs to convey that this one is not like the other sixteen.
+    expect(workiq!.description).toMatch(/not read-only/i);
   });
 
   it('advertises exactly the roster, in order, over the wire', async () => {

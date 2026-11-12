@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Standalone MCP server for Microsoft 365 via the Microsoft Graph API. Provides read-only tools for profile, calendar, mail, Teams chat, OneDrive files, and meeting transcripts. Any MCP client can use it.
+Standalone MCP server for Microsoft 365 via the Microsoft Graph API. Provides read-only tools for profile, calendar, mail, Teams chat, OneDrive files, and meeting transcripts, plus one opt-in tool (`ms_workiq`) that is not read-only. Any MCP client can use it.
 
 **Package:** `@masonator/m365-mcp`
 
@@ -44,6 +44,7 @@ src/
 │       ├── search.ts       # ms_search — /search/query across M365
 │       ├── insights.ts     # ms_insights — /me/insights/{used,shared,trending}
 │       ├── brief.ts        # ms_brief — composes the tools above, no Graph calls
+│       ├── workiq.ts       # ms_workiq — Work IQ MCP proxy (opt-in, NOT read-only)
 │       ├── server-info.ts  # ms_server_info — version + registered tools
 │       └── transcripts.ts  # ms_transcripts — calendar → meeting ID → VTT
 └── __tests__/            # Jest tests (410 tests, ~96% coverage)

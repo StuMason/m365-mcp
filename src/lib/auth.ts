@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
@@ -8,7 +8,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import type { TokenData, AuthConfig } from '../types/tokens.js';
 
-const TOKEN_FILENAME = 'tokens.json';
+const DEFAULT_TOKEN_FILENAME = 'tokens.json';
 const EXPIRY_BUFFER_MS = 120_000; // 2 minutes
 const AUTH_TIMEOUT_MS = 300_000; // 5 minutes
 const DEFAULT_CALLBACK_PATH = '/callback';
@@ -36,6 +36,10 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#x27;');
 }
 
+/**
+ * The scopes requested when no override is set. Kept explicit because a first-time
+ * consent prompt shows exactly this list and nothing else.
+ */
 export const SCOPES = [
   'openid',
   'profile',
@@ -58,6 +62,47 @@ export const SCOPES = [
 ];
 
 /**
+ * Returns the scope string sent on the authorize and refresh requests.
+ *
+ * `MS365_MCP_SCOPES` overrides the built-in list. The useful value is
+ * `https://graph.microsoft.com/.default offline_access`, which asks for whatever
+ * the app registration already has consented rather than a hand-maintained list —
+ * necessary for registrations whose configured permissions are a superset of the
+ * consented ones, where naming an unconsented scope fails the whole request with
+ * AADSTS65001.
+ */
+export function getScopes(): string {
+  const override = process.env['MS365_MCP_SCOPES']?.trim();
+  return override || SCOPES.join(' ');
+}
+
+/**
+ * Returns the token filename inside the config directory.
+ *
+ * `MS365_MCP_TOKEN_FILE` keeps separate app registrations from overwriting each
+ * other's session: one token file holds one client's tokens, and signing in with a
+ * second client would otherwise silently evict the first.
+ */
+export function getTokenFilename(): string {
+  const override = process.env['MS365_MCP_TOKEN_FILE']?.trim();
+  if (!override) return DEFAULT_TOKEN_FILENAME;
+  // A path separator here would write outside the config directory.
+  return basename(override);
+}
+
+/**
+ * Returns true when the registration is a Single-Page Application.
+ *
+ * Only SPA registrations may redeem a token cross-origin; every other platform
+ * fails with AADSTS9002326 when an `Origin` header is present. Secret-presence is
+ * not a usable proxy — a "Mobile and desktop applications" registration is also
+ * secretless and also rejects `Origin` — so this is opt-in.
+ */
+export function isSpaClient(): boolean {
+  return process.env['MS365_MCP_CLIENT_TYPE']?.trim().toLowerCase() === 'spa';
+}
+
+/**
  * Returns the config directory for m365-mcp.
  * Respects XDG_CONFIG_HOME, falls back to ~/.config/m365-mcp.
  * Creates the directory (recursively) if it doesn't exist.
@@ -75,7 +120,7 @@ export function getConfigDir(): string {
  */
 export function loadTokens(configDir?: string): TokenData | null {
   const dir = configDir ?? getConfigDir();
-  const filePath = join(dir, TOKEN_FILENAME);
+  const filePath = join(dir, getTokenFilename());
   try {
     const raw = readFileSync(filePath, 'utf-8');
     return JSON.parse(raw) as TokenData;
@@ -90,7 +135,7 @@ export function loadTokens(configDir?: string): TokenData | null {
  */
 export function saveTokens(tokens: TokenData, configDir?: string): void {
   const dir = configDir ?? getConfigDir();
-  const filePath = join(dir, TOKEN_FILENAME);
+  const filePath = join(dir, getTokenFilename());
   writeFileSync(filePath, JSON.stringify(tokens, null, 2), { mode: 0o600, encoding: 'utf-8' });
 }
 
@@ -100,7 +145,7 @@ export function saveTokens(tokens: TokenData, configDir?: string): void {
  */
 export function deleteTokens(configDir?: string): void {
   const dir = configDir ?? getConfigDir();
-  const filePath = join(dir, TOKEN_FILENAME);
+  const filePath = join(dir, getTokenFilename());
   try {
     unlinkSync(filePath);
   } catch {
@@ -211,10 +256,9 @@ export async function exchangeCodeForTokens(
   const headers: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded',
   };
-  // Origin marks the request as cross-origin, which Azure only permits for
-  // SPA-platform clients. Confidential (secret-bearing) clients use Web-platform
-  // redirect URIs, where Azure rejects Origin with AADSTS9002326.
-  if (redirectUri && !config.clientSecret) {
+  // Origin marks the request as cross-origin, which Azure permits only for
+  // SPA-platform clients; everything else fails with AADSTS9002326.
+  if (redirectUri && isSpaClient()) {
     const origin = new URL(redirectUri).origin;
     headers['Origin'] = origin;
   }
@@ -378,7 +422,7 @@ export async function startAuthFlow(config: AuthConfig): Promise<TokenData> {
   authUrl.searchParams.set('client_id', config.clientId);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('redirect_uri', redirectUri);
-  authUrl.searchParams.set('scope', SCOPES.join(' '));
+  authUrl.searchParams.set('scope', getScopes());
   authUrl.searchParams.set('state', state);
   authUrl.searchParams.set('code_challenge', codeChallenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
@@ -411,7 +455,7 @@ export async function refreshAccessToken(
     // Request the full scope set explicitly: a token cached from an earlier
     // release would otherwise keep refreshing with only the scopes it was
     // originally granted.
-    scope: SCOPES.join(' '),
+    scope: getScopes(),
   };
   if (config.clientSecret) {
     params['client_secret'] = config.clientSecret;
@@ -423,8 +467,8 @@ export async function refreshAccessToken(
       'Content-Type': 'application/x-www-form-urlencoded',
     };
     const redirectUrl = process.env['MS365_MCP_REDIRECT_URL'];
-    // See exchangeCodeForTokens: Origin is SPA-only; omit it for confidential clients.
-    if (redirectUrl && !config.clientSecret) {
+    // See exchangeCodeForTokens: Origin is SPA-only.
+    if (redirectUrl && isSpaClient()) {
       refreshHeaders['Origin'] = new URL(redirectUrl).origin;
     }
 
@@ -437,7 +481,13 @@ export async function refreshAccessToken(
     if (!response.ok) {
       const errorText = await response.text();
       process.stderr.write(`Token refresh failed (${response.status}): ${errorText}\n`);
-      deleteTokens();
+      // Only discard the session when Azure says the grant itself is finished.
+      // Deleting on every failure meant a transient error, a wrong scope or a
+      // mismatched client forced a full browser re-auth for something that would
+      // have succeeded on the next attempt.
+      if (isDeadGrant(errorText)) {
+        deleteTokens();
+      }
       return null;
     }
 
@@ -458,9 +508,31 @@ export async function refreshAccessToken(
     saveTokens(tokenData);
     return tokenData;
   } catch (err) {
+    // A thrown error here is a transport failure — offline, DNS, TLS. The stored
+    // refresh token is very probably still good, so keep it.
     process.stderr.write(`Token refresh error: ${err instanceof Error ? err.message : err}\n`);
-    deleteTokens();
     return null;
+  }
+}
+
+/**
+ * True when a failed refresh means the stored grant can never work again.
+ *
+ * `invalid_grant` covers the revoked, expired and consent-withdrawn cases, where
+ * re-authentication is the only way forward. Everything else — a wrong scope, a
+ * mismatched client, a 5xx — leaves the refresh token usable, and AADSTS70000 in
+ * particular is returned for a malformed *request* rather than a dead token.
+ */
+export function isDeadGrant(errorText: string): boolean {
+  try {
+    const body = JSON.parse(errorText) as { error?: string; error_codes?: number[] };
+    if (body.error !== 'invalid_grant') return false;
+    // 70000 is "provided grant is invalid or malformed", which Azure also returns
+    // when the request asks for scopes the grant never had. Not proof of death.
+    const codes = body.error_codes ?? [];
+    return !codes.includes(70000);
+  } catch {
+    return false;
   }
 }
 
