@@ -79,6 +79,13 @@ async function section(title: string, run: () => Promise<string>): Promise<strin
     body = `(unavailable: ${error instanceof Error ? error.message : String(error)})`;
   }
 
+  // A scope the registration lacks is a permanent, whole-section condition. The
+  // tool explains it at length because it is the whole answer there; here it is one
+  // line among six, so only the first line earns its place.
+  if (body.startsWith('Not available:')) {
+    return `# ${title}\n\n${body.split('\n')[0]}`;
+  }
+
   return `# ${title}\n\n${trimSection(body).trim() || '(nothing)'}`;
 }
 

@@ -338,6 +338,9 @@ describe('graphPost', () => {
 describe('error sanitisation', () => {
   it('replaces an Autodiscover exception with what the caller can act on', async () => {
     const { sanitiseErrorText, sanitiseGraphError } = await import('../lib/graph.js');
+    // Shaped like a real Autodiscover failure — internal hostname, backend server
+    // name, LID — but with invented values. The point of the sanitiser is that none
+    // of this reaches the caller, so the fixture must not be a real host either.
     const leak =
       'Microsoft.Exchange.InfoWorker.Common.Availability.AutoDiscoverInvalidUserException: ' +
       'https://ews.internal.example.com/autodiscover/autodiscover.svc server AB1CD02EF345678 LID: 33676';

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { formatTime } from '../format.js';
 import { graphFetch } from '../graph.js';
+import { lacksScope, missingScope } from '../scopes.js';
 
 export const tasksToolDefinition = {
   name: 'ms_tasks',
@@ -153,6 +154,14 @@ export async function executeTasks(
   },
 ): Promise<string> {
   const count = Math.min(Math.max(args.count || 25, 1), 50);
+
+  if (lacksScope(token, 'Tasks.Read')) {
+    return missingScope(
+      'Tasks.Read',
+      'To Do lists and Planner tasks cannot be read without it, so this tool has nothing to return.',
+      'Tasks that were discussed in mail, chat or a meeting are still reachable through ms_search, ms_mail and ms_transcripts.',
+    );
+  }
 
   // Mode 1: Planner tasks assigned to the user
   if (args.planner) {
