@@ -73,6 +73,11 @@ policy, not this one. If you would rather a category of data never reached the
 model, do not grant the permission that reads it: a tool whose permission is
 missing says so and makes no Graph call.
 
+That holds only while `ms_workiq` is off. Work IQ reads with your own Microsoft 365
+permissions, not the app registration's, so it can return data the Graph tools are
+refused. Leave `MS365_MCP_WORKIQ_SCOPE` unset if you are relying on withheld
+permissions.
+
 ## Logs
 
 The server writes diagnostics to standard error on the machine running it: the
