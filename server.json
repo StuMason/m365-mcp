@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.StuMason/m365",
+  "description": "Read Microsoft 365 mail, calendar, Teams, files and meeting transcripts via Microsoft Graph",
+  "repository": {
+    "url": "https://github.com/StuMason/m365-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://stumason.dev",
+  "version": "1.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@masonator/m365-mcp",
+      "version": "1.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "Application (client) ID of your Microsoft Entra app registration",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false,
+          "name": "MS365_MCP_CLIENT_ID"
+        },
+        {
+          "description": "Directory (tenant) ID of your Microsoft Entra app registration",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false,
+          "name": "MS365_MCP_TENANT_ID"
+        },
+        {
+          "description": "Client secret, only for a Web-platform registration",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true,
+          "name": "MS365_MCP_CLIENT_SECRET"
+        }
+      ]
+    }
+  ]
+}

@@ -43,5 +43,8 @@ coverage/
 # Output of 'npm pack'
 *.tgz
 
+# Output of 'mcpb pack'
+*.mcpb
+
 # Yarn Integrity file
 .yarn-integrity

@@ -112,7 +112,7 @@ OAuth2 confidential client (client_secret). On first run, opens browser for Micr
 2. Add the definition to `TOOL_DEFINITIONS` in `src/lib/tools/index.ts`
 3. Register it in `src/index.ts` with `server.registerTool(def.name, def, withToken(execute))`
 4. Add tests in `src/__tests__/tools/my-tool.test.ts` (mock `graphFetch`)
-5. Update the tool count and docs in README.md — `roster.test.ts` fails until they agree
+5. Update the tool count in README.md and add the tool to `docs/tools.md` — `roster.test.ts` fails until they agree
 
 ### Schema conventions
 
@@ -142,4 +142,9 @@ tests call those functions directly.
 
 ## Publishing
 
-Auto-publish to npm on version bump via CI.
+Bump with `npm version <patch|minor|major> --no-git-tag-version`: the `version` hook
+syncs `server.json` (MCP Registry) and `manifest.json` (MCPB bundle), and
+`manifests.test.ts` fails if they drift. On merge to main, CI publishes to npm,
+attaches `m365-mcp.mcpb` to the GitHub release and publishes to the MCP Registry.
+
+Keep tool counts out of `server.json` and `manifest.json`: nothing guards them there.
