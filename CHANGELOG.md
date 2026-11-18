@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-18
+
+### Added
+
+- One-click install for Claude Desktop. Each release now carries `m365-mcp.mcpb`:
+  drag it into Settings → Extensions and fill in the client ID and tenant ID.
+- Listed on the MCP Registry as `io.github.StuMason/m365`.
+- `PRIVACY.md` and `SECURITY.md`.
+- `docs/tools.md` and `docs/configuration.md` hold the reference that used to fill
+  the README. `ms_schedule` and `ms_sharepoint` were registered but never
+  documented; both are in the tool reference now, and a test fails if a tool is
+  missing from it.
+
+### Fixed
+
+- An unexpanded `${...}` placeholder in `MS365_MCP_CLIENT_SECRET` is treated as no
+  secret. A client that leaves an optional field unfilled can pass the placeholder
+  through literally, which turned a working public client into a failed
+  confidential one.
+
+### Security
+
+- `zod` 4.6.7 and the MCP SDK 2.4.0, clearing the open advisories against both.
+  The SDK advisories concern its HTTP transport, which this server does not use.
+- Development-only advisories cleared by overriding `handlebars`, `markdown-it`,
+  `smol-toml`, `katex` and `minimatch` to patched versions.
+
 ## [1.1.0] - 2026-09-11
 
 ### Added

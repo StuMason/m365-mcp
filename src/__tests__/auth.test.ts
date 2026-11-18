@@ -276,6 +276,14 @@ describe('loadAuthConfig', () => {
     expect(config.clientSecret).toBe('secret');
   });
 
+  it('treats an unexpanded placeholder as no CLIENT_SECRET', () => {
+    process.env['MS365_MCP_CLIENT_ID'] = 'client';
+    process.env['MS365_MCP_CLIENT_SECRET'] = '${user_config.client_secret}';
+    process.env['MS365_MCP_TENANT_ID'] = 'tenant';
+
+    expect(loadAuthConfig().clientSecret).toBeUndefined();
+  });
+
   it('throws when only TENANT_ID is missing', () => {
     process.env['MS365_MCP_CLIENT_ID'] = 'client';
     delete process.env['MS365_MCP_TENANT_ID'];

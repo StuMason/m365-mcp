@@ -60,7 +60,7 @@ When adding Microsoft Graph API capabilities:
 3. Add the client method in `src/lib/`
 4. Add the MCP tool definition
 5. Add tests in `src/__tests__/`
-6. Update tool count in README.md and CLAUDE.md
+6. Update tool count in README.md and CLAUDE.md, and document the tool in `docs/tools.md`
 7. Add changelog entry
 
 ### Code Style
@@ -82,10 +82,12 @@ src/
 
 ## Release Process
 
-1. Update version in `package.json`
+1. Run `npm version <patch|minor|major> --no-git-tag-version`. It bumps `package.json`,
+   and `server.json` and `manifest.json` with it
 2. Add changelog entry
 3. Merge to main
-4. GitHub Actions auto-publishes to npm on version bump
+4. GitHub Actions publishes to npm, attaches `m365-mcp.mcpb` to a GitHub release and
+   publishes to the MCP Registry
 
 ## Questions?
 

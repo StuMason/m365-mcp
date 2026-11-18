@@ -1,0 +1,23 @@
+# MCPB bundle contents: manifest.json, icon.png, dist/, production node_modules/,
+# package.json, README.md, LICENSE. Everything else stays out.
+src/
+docs/
+scripts/
+coverage/
+.github/
+.husky/
+.claude/
+*.md
+!README.md
+*.mcpb
+server.json
+eslint.config.js
+jest.config.js
+tsconfig.json
+.prettierrc
+.lintstagedrc.json
+.markdownlint-cli2.jsonc
+.gitignore
+package-lock.json
+.env
+.env.*

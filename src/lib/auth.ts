@@ -167,7 +167,11 @@ export function isTokenExpired(tokens: TokenData): boolean {
  */
 export function loadAuthConfig(): AuthConfig {
   const clientId = process.env['MS365_MCP_CLIENT_ID'];
-  const clientSecret = process.env['MS365_MCP_CLIENT_SECRET'] || undefined;
+  // A client that leaves an optional config field unfilled can hand over the literal
+  // `${user_config.client_secret}` instead of nothing. Sent as a secret, that turns a
+  // working public client into a failed confidential one.
+  const rawSecret = process.env['MS365_MCP_CLIENT_SECRET'];
+  const clientSecret = rawSecret && !/^\$\{[^}]*\}$/.test(rawSecret.trim()) ? rawSecret : undefined;
   const tenantId = process.env['MS365_MCP_TENANT_ID'];
 
   const missing: string[] = [];

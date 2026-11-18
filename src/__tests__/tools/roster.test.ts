@@ -165,4 +165,12 @@ describe('tool roster', () => {
       }
     }
   });
+
+  // The reference sat two tools short for a release: ms_schedule and ms_sharepoint
+  // were registered and never documented.
+  it('documents every tool in docs/tools.md', () => {
+    const text = readFileSync(join(repoRoot, 'docs', 'tools.md'), 'utf-8');
+    const documented = [...text.matchAll(/^## `(ms_[a-z_]+)`$/gm)].map((m) => m[1]);
+    expect(documented.sort()).toEqual(toolNames().sort());
+  });
 });

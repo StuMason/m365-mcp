@@ -1,8 +1,9 @@
 {
   "name": "@masonator/m365-mcp",
   "scope": "@masonator",
-  "version": "1.1.0",
-  "description": "MCP server implementation for Microsoft 365 via Microsoft Graph API",
+  "version": "1.2.0",
+  "mcpName": "io.github.StuMason/m365",
+  "description": "MCP server for Microsoft 365: mail, calendar, Teams, OneDrive, SharePoint and meeting transcripts via the Microsoft Graph API",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -31,23 +32,36 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "prepublishOnly": "npm test && npm run lint",
+    "version": "node scripts/sync-manifests.mjs && prettier --write server.json manifest.json && git add server.json manifest.json",
     "start": "node dist/index.js"
   },
   "keywords": [
     "microsoft-365",
     "microsoft-graph",
+    "office-365",
+    "outlook",
+    "teams",
+    "sharepoint",
+    "onedrive",
     "mcp",
-    "model-context-protocol"
+    "model-context-protocol",
+    "claude",
+    "ai"
   ],
   "author": "Stuart Mason",
   "license": "MIT",
+  "homepage": "https://github.com/StuMason/m365-mcp#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/StuMason/m365-mcp.git"
   },
+  "bugs": {
+    "url": "https://github.com/StuMason/m365-mcp/issues"
+  },
+  "funding": "https://github.com/sponsors/StuMason",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/client": "^2.3.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
     "@typescript-eslint/eslint-plugin": "^8.51.0",
@@ -70,16 +84,19 @@
     "node": ">=20"
   },
   "overrides": {
-    "handlebars": "^4.7.9",
-    "smol-toml": "^1.8.0"
+    "handlebars": "^4.7.10",
+    "smol-toml": "^1.9.0",
+    "markdown-it": "^15.0.3",
+    "katex": "^0.18.2",
+    "minimatch": "^11.0.1"
   },
   "lint-staged": {
     "*.{ts,js,json,md,yaml,yml}": "prettier --write",
     "*.ts": "eslint --fix"
   },
   "dependencies": {
-    "@modelcontextprotocol/core": "^2.0.0",
-    "@modelcontextprotocol/server": "^2.0.0",
-    "zod": "^4.6.2"
+    "@modelcontextprotocol/core": "^2.3.0",
+    "@modelcontextprotocol/server": "^2.3.0",
+    "zod": "^4.6.6"
   }
 }

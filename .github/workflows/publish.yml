@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - 'package.json'
+  # Manual recovery for a release that published to npm and then failed: it
+  # rebuilds the MCPB bundle, creates or updates the GitHub release and retries
+  # the MCP Registry. Tests and the npm publish stay skipped when the version is
+  # already on npm. Run it before main moves past the released commit, because
+  # the bundle is built from whatever main holds.
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -23,14 +29,21 @@ jobs:
           echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
           # Check if this version exists on npm
+          # Everything after the npm publish also runs on a manual dispatch
           if npm view @masonator/m365-mcp@$CURRENT_VERSION version 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "release=true" >> $GITHUB_OUTPUT
+            else
+              echo "release=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "exists=false" >> $GITHUB_OUTPUT
+            echo "release=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Setup Node.js
-        if: steps.version.outputs.exists == 'false'
+        if: steps.version.outputs.release == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -38,7 +51,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        if: steps.version.outputs.exists == 'false'
+        if: steps.version.outputs.release == 'true'
         run: npm ci
 
       - name: Run tests
@@ -46,15 +59,24 @@ jobs:
         run: npm test
 
       - name: Build
-        if: steps.version.outputs.exists == 'false'
+        if: steps.version.outputs.release == 'true'
         run: npm run build
 
       - name: Publish to npm
         if: steps.version.outputs.exists == 'false'
         run: npm publish --access public
 
+      - name: Build MCPB bundle
+        if: steps.version.outputs.release == 'true'
+        run: |
+          # Rebuild node_modules with production deps only (dist/ is already built);
+          # --ignore-scripts skips the husky prepare hook, which is a dev dependency
+          rm -rf node_modules
+          npm ci --omit=dev --ignore-scripts
+          npx --yes @anthropic-ai/mcpb pack . m365-mcp.mcpb
+
       - name: Extract changelog for version
-        if: steps.version.outputs.exists == 'false'
+        if: steps.version.outputs.release == 'true'
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.current }}"
@@ -67,7 +89,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: steps.version.outputs.exists == 'false'
+        if: steps.version.outputs.release == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.current }}
@@ -80,10 +102,28 @@ jobs:
             ---
 
             📦 [View on npm](https://www.npmjs.com/package/@masonator/m365-mcp/v/${{ steps.version.outputs.current }})
+
+            🖱️ One-click Claude Desktop install: download `m365-mcp.mcpb` below and drag it into Settings → Extensions.
+          files: m365-mcp.mcpb
           draft: false
           prerelease: false
           generate_release_notes: false
 
+      - name: Publish to MCP Registry
+        if: steps.version.outputs.release == 'true'
+        run: |
+          # Asset naming is goreleaser-style (linux_amd64), NOT uname-style
+          # (linux_x86_64) — hardcode since GitHub runners are always linux/amd64
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          # npm propagation can lag right after publish — retry a few times
+          for i in 1 2 3; do
+            ./mcp-publisher publish && exit 0
+            echo "Registry publish attempt $i failed; retrying in 30s..."
+            sleep 30
+          done
+          exit 1
+
       - name: Skip publish (version exists)
-        if: steps.version.outputs.exists == 'true'
+        if: steps.version.outputs.exists == 'true' && steps.version.outputs.release == 'false'
         run: echo "Version ${{ steps.version.outputs.current }} already exists on npm, skipping publish"

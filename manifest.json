@@ -1,0 +1,61 @@
+{
+  "manifest_version": "0.2",
+  "name": "m365-mcp",
+  "display_name": "M365 MCP",
+  "version": "1.2.0",
+  "description": "Read your Microsoft 365 mail, calendar, Teams, files and meeting transcripts through Microsoft Graph",
+  "icon": "icon.png",
+  "author": {
+    "name": "Stuart Mason",
+    "url": "https://stumason.dev"
+  },
+  "homepage": "https://stumason.dev",
+  "documentation": "https://github.com/StuMason/m365-mcp#readme",
+  "support": "https://github.com/StuMason/m365-mcp/issues",
+  "privacy_policies": ["https://github.com/StuMason/m365-mcp/blob/main/PRIVACY.md"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StuMason/m365-mcp"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "MS365_MCP_CLIENT_ID": "${user_config.client_id}",
+        "MS365_MCP_TENANT_ID": "${user_config.tenant_id}",
+        "MS365_MCP_CLIENT_SECRET": "${user_config.client_secret}"
+      }
+    }
+  },
+  "user_config": {
+    "client_id": {
+      "type": "string",
+      "title": "Application (client) ID",
+      "description": "The client ID of your Microsoft Entra app registration",
+      "required": true
+    },
+    "tenant_id": {
+      "type": "string",
+      "title": "Directory (tenant) ID",
+      "description": "The tenant ID of your Microsoft Entra app registration",
+      "required": true
+    },
+    "client_secret": {
+      "type": "string",
+      "title": "Client secret",
+      "description": "Only for a Web-platform registration. Leave empty for a public client.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=20"
+    }
+  }
+}
